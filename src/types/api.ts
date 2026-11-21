@@ -12,8 +12,6 @@ export interface Participant {
   id: string;
   name: string;
   color: string | null;
-  credit_budget: number;
-  credits_remaining: number | null;
   created_at: string;
 }
 
@@ -39,7 +37,6 @@ export interface Task {
   acceptance: string | null;
   priority: number;
   size: TaskSize;
-  est_credits: number | null;
   scope: string[];        // path prefixes, e.g. ["src/components/queue/"]
   depends_on: string[];   // task ids
   status: TaskStatus;
@@ -47,7 +44,6 @@ export interface Task {
   branch: string | null;
   pr_url: string | null;
   result_summary: string | null;
-  credits_used: number;
   created_by: string;
   claimed_at: string | null;
   completed_at: string | null;
@@ -89,7 +85,6 @@ export interface CreateTaskInput {
   acceptance?: string;
   priority?: number;
   size?: TaskSize;
-  est_credits?: number;
   scope: string[];
   depends_on?: string[];   // ids of existing tasks or keys from this batch
 }
@@ -98,7 +93,10 @@ export type UpdateTaskInput = Partial<
   Pick<Task, "title" | "description" | "acceptance" | "priority" | "size" | "scope" | "depends_on" | "status">
 >;
 
-export interface ReviewRequest { pr_url: string; branch: string; summary?: string; credits_used?: number }
-export interface DoneRequest { summary?: string; credits_used?: number }
+export interface ReviewRequest { pr_url: string; branch: string; summary?: string }
+export interface DoneRequest { summary?: string }
+
+// Row of the participant_workload view (fairness meter). Points: S=1, M=2, L=4.
+export interface ParticipantWorkload { participant_id: string; name: string; points: number; tasks_done: number }
 
 export interface HealthResponse { ok: boolean }

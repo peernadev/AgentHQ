@@ -23,7 +23,7 @@ Then repeat this loop:
 5. Run `npm run lint && npx tsc --noEmit && npm run build`. Fix until all pass.
 6. Push the branch, open a PR with `gh pr create` (title = task title, body = summary +
    how to test + "AgentHQ task <id>"), then run
-   `node cli/hq.mjs review <id> --pr <url> --branch <branch> --credits <your estimate>`.
+   `node cli/hq.mjs review <id> --pr <url> --branch <branch>`.
 7. Don't wait for the merge. Go back to step 1.
 
 If you hit the same error twice, run `node cli/hq.mjs fail <id> "<what you tried>"` and move on.

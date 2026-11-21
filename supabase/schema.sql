@@ -9,8 +9,6 @@ create table participants (
   id                uuid primary key default gen_random_uuid(),
   name              text not null unique,
   color             text,
-  credit_budget     numeric not null default 2500,
-  credits_remaining numeric,               -- synced by the person; null = not reported yet
   created_at        timestamptz not null default now()
 );
 
@@ -41,7 +39,6 @@ create table tasks (
   acceptance     text,
   priority       integer not null default 100,   -- lower = sooner
   size           text not null default 'M' check (size in ('S','M','L')),
-  est_credits    numeric,
   scope          text[] not null default '{}',   -- path prefixes this task may edit
   depends_on     uuid[] not null default '{}',
   status         text not null default 'draft'
@@ -50,7 +47,6 @@ create table tasks (
   branch         text,
   pr_url         text,
   result_summary text,
-  credits_used   numeric not null default 0,
   created_by     text not null default 'orchestrator',
   claimed_at     timestamptz,
   completed_at   timestamptz,
@@ -112,12 +108,29 @@ begin
 end $$;
 
 -- Atomically give an agent the best claimable task. Returns 0 or 1 rows.
+-- Workload points per size, used for fairness.
+create or replace function task_points(p_size text)
+returns integer language sql immutable as $$
+  select case p_size when 'S' then 1 when 'L' then 4 else 2 end;
+$$;
+
+-- Points of work each participant has taken (active + done).
+create or replace view participant_workload as
+select p.id as participant_id, p.name,
+       coalesce(sum(task_points(t.size)) filter (where t.status in ('claimed','in_progress','in_review','done')), 0)::int as points,
+       count(t.id) filter (where t.status = 'done')::int as tasks_done
+  from participants p
+  left join agents a on a.participant_id = p.id
+  left join tasks t on t.agent_id = a.id
+ group by p.id, p.name;
+
+-- Atomically give an agent the best claimable task. Returns 0 or 1 rows.
 create or replace function claim_next_task(p_agent_id uuid)
 returns setof tasks language plpgsql security definer set search_path = public as $$
 declare
   v_participant uuid;
-  v_my_spend    numeric;
-  v_avg_spend   numeric;
+  v_my_points   numeric;
+  v_avg_points  numeric;
   v_task        tasks;
 begin
   -- serialize all claims so two agents can never race for overlapping scopes
@@ -134,17 +147,20 @@ begin
     raise exception 'agent already has an active task';
   end if;
 
-  -- fairness: over your share while a teammate has an idle agent -> skip this round
-  select credit_budget - coalesce(credits_remaining, credit_budget)
-    into v_my_spend from participants where id = v_participant;
-  select avg(credit_budget - coalesce(credits_remaining, credit_budget))
-    into v_avg_spend from participants;
-  if v_my_spend > v_avg_spend * 1.25 + 100 and exists (
+  -- fairness: if you're more than 2 points ahead of the team average while a
+  -- teammate has an idle worker, skip this round so the work spreads evenly.
+  -- Average is over participants with a worker agent online.
+  select points into v_my_points from participant_workload where participant_id = v_participant;
+  select avg(w.points) into v_avg_points
+    from participant_workload w
+   where exists (select 1 from agents a where a.participant_id = w.participant_id
+                   and a.role = 'worker' and a.last_heartbeat > now() - interval '10 minutes');
+  if v_my_points > coalesce(v_avg_points, 0) + 2 and exists (
        select 1 from agents a
         where a.participant_id <> v_participant and a.role = 'worker'
           and a.status = 'idle' and a.last_heartbeat > now() - interval '10 minutes') then
     insert into events (agent_id, type, message)
-    values (p_agent_id, 'fairness_skip', 'Over fair share; leaving the next task for a teammate');
+    values (p_agent_id, 'fairness_skip', 'Ahead of the team on workload; leaving the next task for a teammate');
     update agents set status = 'idle', current_task_id = null where id = p_agent_id;
     return;
   end if;
@@ -191,7 +207,7 @@ create policy "read agents"       on agents       for select to anon, authentica
 create policy "read tasks"        on tasks        for select to anon, authenticated using (true);
 create policy "read events"       on events       for select to anon, authenticated using (true);
 -- agent_tokens: intentionally no policies.
-grant select on participants, agents, tasks, events to anon, authenticated;
+grant select on participants, agents, tasks, events, participant_workload to anon, authenticated;
 revoke all on agent_tokens from anon, authenticated;
 
 -- ---------- realtime for the live dashboard ----------

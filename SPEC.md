@@ -4,11 +4,11 @@ A live mission-control dashboard for hackathon teams running many AI coding agen
 
 ## 1. The idea
 Student teams now run several AI agents across several laptops on one repo. Agents
-step on each other, nobody can see the whole picture, and token or credit spend gets
-lopsided. AgentHQ gives the team one **orchestrator** agent that breaks the project into
+step on each other, nobody can see the whole picture, and the work (and token spend)
+ends up lopsided. AgentHQ gives the team one **orchestrator** agent that breaks the project into
 modular, non-overlapping tasks in a **queue**. **Worker agents** on every laptop (several
 per laptop is fine) pull the top task, do it, open a PR, and pull the next one. A live
-dashboard shows who is doing what, what's done, what's next, and whether spend is fair.
+dashboard shows who is doing what, what's done, what's next, and whether the work is split fairly.
 
 ## 2. Demo flow (3 minutes, the top priority)
 1. Dashboard is open on the projector: 3 participants, 0 agents, empty queue.
@@ -22,13 +22,13 @@ dashboard shows who is doing what, what's done, what's next, and whether spend i
    immediately claims the next one.
 6. We kill an agent on stage. Within the timeout it turns "offline" and its task goes
    back to the queue, and another agent picks it up.
-7. The **fairness meter** shows spend per person staying roughly even. One person is
-   over their share, so the next task goes to a teammate.
+7. The **fairness meter** shows workload per person staying roughly even. One person is
+   ahead, so the next task goes to a teammate.
 8. **Wow moment:** "We built AgentHQ *using* AgentHQ. Here's the activity log from today."
 
 ## 3. Must-haves (only what the demo needs)
 - [ ] Database + atomic claim (no two agents get the same task; no overlapping scopes)
-- [ ] `hq` CLI: join, claim, progress, review, done, fail, status, tasks add, balance
+- [ ] `hq` CLI: join, claim, progress, review, done, fail, status, tasks add
 - [ ] Worker prompt (the loop agents follow) and orchestrator prompt (how to split work)
 - [ ] Dashboard: agent board, queue (approve drafts, reorder), in review / done, activity feed
 - [ ] Live updates (Supabase Realtime, no refresh)
@@ -40,23 +40,24 @@ dashboard shows who is doing what, what's done, what's next, and whether spend i
 - Dependency graph view of the queue
 - `hq ask`: agent asks a human a question; answer it from the dashboard
 - GitHub webhook: auto-mark "done" when the PR merges (until then: "Mark merged" button)
-- Burn rate + "credits run out at 7:40pm" projection per person
+- Real token/cost tracking per agent (read usage from each tool), replacing workload points
 - Show the Vercel preview link on each task card
 - In-app "Plan with orchestrator" button that calls an LLM API (needs sponsor API credits)
 
 ## 5. Data model
 Defined in `supabase/schema.sql` (types mirrored in `src/types/api.ts`).
-- **participants**: name, color, credit_budget (2500), credits_remaining (synced by the person)
+- **participants**: name, color
 - **agents**: participant, name ("eran-mbp-1"), machine, tool, model, role
   (worker | orchestrator), status (idle | working | blocked | offline), current_task_id,
   last_heartbeat
 - **tasks**: title, description, acceptance, priority (lower = sooner), size (S/M/L),
-  est_credits, **scope** (path prefixes the task may edit), depends_on, status
+  **scope** (path prefixes the task may edit), depends_on, status
   (draft → queued → claimed → in_progress → in_review → done | failed | cancelled),
-  agent_id, branch, pr_url, result_summary, credits_used
+  agent_id, branch, pr_url, result_summary
 - **events**: append-only activity log (created, approved, claimed, progress, pr_opened,
   done, failed, released, fairness_skip)
 - **agent_tokens**: hashed per-agent API tokens (never readable by the browser)
+- **participant_workload** (view): points per person (S=1, M=2, L=4) and tasks done
 
 ## 6. How interference is prevented
 1. **Scopes.** Every queued task lists path prefixes, like `src/components/queue/`. The
@@ -68,13 +69,14 @@ Defined in `supabase/schema.sql` (types mirrored in `src/types/api.ts`).
 4. **One branch per task**, PRs into main, same git rules as AGENTS.md.
 5. Claims are serialized with a Postgres advisory lock, so two agents can never race.
 
-## 7. Fairness
-- spend(person) = credit_budget − credits_remaining. Each person runs
-  `hq balance <number>` from their Codex usage page, or edits it on the dashboard.
-- Claim rule: if your spend > team average × 1.25 + 100 **and** a teammate has an idle
-  online agent, you get no task this round, and the event log says why.
-- The orchestrator balances task sizes so each person's expected share is similar.
-- Dashboard: one bar per person against an "equal share" line.
+## 7. Fairness (by workload, not tokens)
+- Each task is worth points by size: S = 1, M = 2, L = 4. A person's workload = points of
+  tasks their agents have taken (active + done). See the `participant_workload` view.
+- Claim rule: if you're more than 2 points ahead of the team average **and** a teammate
+  has an idle online agent, you get no task this round; the event log says why.
+- The orchestrator keeps task sizes even so work spreads well.
+- Dashboard: one bar per person against the team average line.
+- Pitch note: points are a stand-in for token spend; real usage tracking is the next step.
 
 ## 8. API contracts (Next.js route handlers)
 Agent calls send `Authorization: Bearer <agent token>`. Every agent call also counts
@@ -86,14 +88,13 @@ as a heartbeat. The dashboard reads Supabase directly (read-only); writes go thr
 | POST | /api/agents/heartbeat | { status?, note? } | { ok } | worker |
 | POST | /api/tasks/claim | none | ClaimResponse | worker |
 | POST | /api/tasks/:id/progress | { message } | { ok } | worker |
-| POST | /api/tasks/:id/review | { pr_url, branch, summary?, credits_used? } | { ok } | worker |
-| POST | /api/tasks/:id/done | { summary?, credits_used? } | { ok } | worker or dashboard |
+| POST | /api/tasks/:id/review | { pr_url, branch, summary? } | { ok } | worker |
+| POST | /api/tasks/:id/done | { summary? } | { ok } | worker or dashboard |
 | POST | /api/tasks/:id/fail | { reason } | { ok } | worker |
 | POST | /api/tasks | { tasks: CreateTaskInput[] } | { ids } | orchestrator (created as drafts) |
 | PATCH | /api/tasks/:id | UpdateTaskInput | Task | dashboard |
 | POST | /api/tasks/approve | { ids } | { ok } | dashboard (draft → queued) |
 | POST | /api/tasks/reorder | { ids } (new order) | { ok } | dashboard |
-| POST | /api/participants/:id/balance | { credits_remaining } | { ok } | CLI or dashboard |
 
 Dashboard write routes: no auth for the hackathon. Mention it to judges as a known shortcut.
 
@@ -103,12 +104,11 @@ Config lives in `.hq.json` in the current folder (gitignored), so each worktree 
 hq join --code <TEAM_JOIN_CODE> --participant Eran --name eran-mbp-1 [--role worker|orchestrator] [--model terra]
 hq claim                         # prints task JSON, or NO_TASK
 hq progress <id> "message"
-hq review <id> --pr <url> --branch <name> [--credits 40]
+hq review <id> --pr <url> --branch <name>
 hq done <id> [--summary "..."]
 hq fail <id> "reason"
 hq status [--json]               # queue + agents snapshot
 hq tasks add plan.json           # orchestrator: submit drafts
-hq balance <credits_remaining>
 ```
 Env: HQ_URL (defaults to the production Vercel URL).
 

@@ -45,3 +45,6 @@ next-env.d.ts
 # agenthq
 .hq.json
 .claude/worktrees/
+
+.vercel
+.env*
