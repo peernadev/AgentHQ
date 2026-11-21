@@ -42,8 +42,10 @@ If a task needs a file outside your area or scope, stop and say so instead of ed
 - One task per branch. After a merge, start a new branch from the latest main.
 
 ## Feedback loop
-- Teammates comment on the PR preview with the Vercel Toolbar.
-- "Address feedback" means: run `vercel comments`, fix each comment, reply, resolve, push.
+- Teammates open the PR's Vercel preview and leave comments on the GitHub PR (often with screenshots).
+- "Address feedback" means: run `gh pr view --comments`, fix each comment, reply with
+  `gh pr comment`, run checks, push.
+- While working on UI, keep `npm run dev -- -p $PORT` running so the human can watch changes live.
 - After visual changes, check desktop and 375px mobile.
 
 ## Design rules (DESIGN.md is a living file)

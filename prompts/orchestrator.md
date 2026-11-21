@@ -28,8 +28,8 @@ Each time I give you a goal (or say "replan"):
      task that defines the type or contract, then both depend on it, so they can run in parallel.
    - **Acceptance:** 1–3 checkable bullets ("PR preview shows X", "route returns Y").
    - **Priority:** whatever unblocks the demo flow in SPEC.md comes first (lower number = sooner).
-   - **Fairness:** keep sizes even so the queue can be spread evenly across the team.
-     Add `est_credits` (S≈20, M≈50, L≈120).
+   - **Fairness:** keep sizes even (mostly S and M) so work spreads evenly across the
+     team. Points: S=1, M=2, L=4.
    - Don't duplicate tasks that are already queued, active or done.
 3. Write the plan to `plan.json` as `{ "tasks": CreateTaskInput[] }` (see src/types/api.ts;
    use `key` + `depends_on` keys for dependencies inside the batch).
