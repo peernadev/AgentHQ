@@ -150,6 +150,7 @@ export async function planMission(input: {
       return { tasks: validate(text, queueIds), attempts: attempt, model: MODELS[m] };
     } catch (e) {
       lastError = e instanceof Error ? e.message : String(e);
+      console.warn(`planner: attempt ${attempt} (${MODELS[m]}) rejected: ${lastError.replace(/\n/g, " | ").slice(0, 400)}`);
       contents.push(
         { role: "model", parts: [{ text: text ?? "" }] },
         { role: "user", parts: [{ text: `Your plan was rejected:\n${lastError}\nReturn a corrected, complete plan.` }] },
