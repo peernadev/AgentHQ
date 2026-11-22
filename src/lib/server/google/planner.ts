@@ -20,7 +20,10 @@ const MODELS = [
 const ATTEMPTS = 2; // validation attempts (the second one gets the rejection reason)
 const BUDGET_MS = 50_000; // whole planner call, all models together; the route's maxDuration is 60 s
 const CALL_TIMEOUT_MS = 25_000;
-const RESERVE_MS = 7_000; // time kept back for each model not tried yet
+// Gemini rejects request deadlines under 10 s (400 INVALID_ARGUMENT), so every model that gets
+// a turn needs at least that much, and that much is kept back for each model not tried yet.
+const MIN_CALL_MS = 10_000;
+const RESERVE_MS = MIN_CALL_MS;
 
 /** Every model was overloaded or timed out within the budget. The route may use the demo fixture. */
 export class PlannerBusyError extends HttpError {
@@ -31,7 +34,9 @@ export class PlannerBusyError extends HttpError {
 
 const isTransient = (e: unknown) => {
   const s = e instanceof Error ? e.message : String(e);
-  return /\b(408|429|500|502|503|504)\b|UNAVAILABLE|RESOURCE_EXHAUSTED|DEADLINE|timed? ?out|abort/i.test(s);
+  // Status names are matched exactly: a 400 whose text mentions a "deadline" is not transient.
+  return /\b(408|429|500|502|503|504)\b|UNAVAILABLE|RESOURCE_EXHAUSTED|DEADLINE_EXCEEDED/.test(s)
+    || /timed? ?out|\babort(ed)?\b/i.test(s);
 };
 
 const TASK_SCHEMA = {
@@ -121,7 +126,7 @@ export async function planMission(input: {
       const model = MODELS[m];
       const left = deadline - Date.now();
       const timeout = Math.min(CALL_TIMEOUT_MS, left - RESERVE_MS * (MODELS.length - 1 - m));
-      if (timeout < 3_000) continue; // not enough time for this one; a later, lighter model may fit
+      if (timeout < MIN_CALL_MS) continue; // too little time for this one; give it to the next model
       try {
         const res = await gemini().models.generateContent({
           model,
