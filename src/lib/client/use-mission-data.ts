@@ -254,10 +254,11 @@ export function useMissionData() {
     } finally { finish(operation); }
   }
 
-  async function approveAll(): Promise<void> {
-    if (!drafts.length) return;
-    const operation = begin("approving");
-    const ids = drafts.map(task => task.id);
+  /** Called only from an explicit user click; planning never approves drafts. */
+  async function approveTasks(requested: string[]): Promise<void> {
+    const ids = requested.filter(id => drafts.some(task => task.id === id));
+    if (!ids.length) return;
+    const operation = begin("approving", ids.length === 1 ? ids[0] : null);
     try {
       await apiRequest<{ ok: boolean }>(operation.session.user, "/api/tasks/approve", {
         method: "POST", body: { ids }, signal: operation.controller.signal,
@@ -269,6 +270,7 @@ export function useMissionData() {
       throw error;
     } finally { finish(operation); }
   }
+  function approveAll(): Promise<void> { return approveTasks(drafts.map(task => task.id)); }
 
   function taskForAction(taskId: string, requiresMission: boolean): Task {
     const session = requireSession();
@@ -337,6 +339,6 @@ export function useMissionData() {
     planning: view.planning, planningError: view.planningError, approving: view.approving,
     actionTaskId: view.actionTaskId, actionError: view.actionError, announcement: view.announcement,
     cachedPlan, queueTab: view.queueTab, setQueueTab, canReorder: false as const,
-    planMission, approveAll, markDone, reviewTask, recoverTask, selectMission, selectTask,
+    planMission, approveAll, approveTasks, markDone, reviewTask, recoverTask, selectMission, selectTask,
   };
 }

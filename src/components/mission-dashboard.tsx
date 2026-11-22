@@ -17,6 +17,18 @@ const statusLabels: Record<AgentStatus | TaskStatus, string> = {
   claimed: "Claimed", in_progress: "Working", in_review: "In review", done: "Done", failed: "Failed", cancelled: "Cancelled",
 };
 const missionLabels: Record<MissionStatus, string> = { planning: "Planning", awaiting_approval: "Awaiting approval", running: "Running", reviewing: "Reviewing", done: "Done" };
+/** Shown status follows the tasks; the stored field is only a fallback for missions without tasks. */
+function derivedMissionStatus(stored: MissionStatus, tasks: Task[]): MissionStatus {
+  const counted = tasks.filter(task => task.status !== "cancelled");
+  if (!counted.length) return stored;
+  if (counted.some(task => task.status === "draft")) return "awaiting_approval";
+  if (counted.every(task => task.status === "done")) return "done";
+  return "running";
+}
+function pointsLabel(task: Task) {
+  const points = TASK_POINTS[task.size];
+  return `${task.size} · ${points} ${points === 1 ? "pt" : "pts"}`;
+}
 function age(iso: string, now: number) {
   const timestamp = new Date(iso).getTime();
   if (!Number.isFinite(timestamp)) return "Time unavailable";
@@ -143,10 +155,21 @@ export function MissionDashboard() {
     </div>;
   }
   function approvalButton() {
-    return <Button className={styles.control} onClick={() => runAction(board.approveAll)} disabled={!board.drafts.length || acting} aria-busy={board.approving}>{board.approving && <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />}{board.approving ? "Approving…" : `Approve ${board.drafts.length} ${board.drafts.length === 1 ? "task" : "tasks"}`}</Button>;
+    return <Button className={styles.control} onClick={() => runAction(board.approveAll)} disabled={!board.drafts.length || acting} aria-busy={board.approving && !board.actionTaskId}>{board.approving && !board.actionTaskId && <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />}{board.approving && !board.actionTaskId ? "Approving…" : board.drafts.length === 1 ? "Approve 1 task" : `Approve all ${board.drafts.length} tasks`}</Button>;
   }
   function drafts() {
-    return <div className={styles.draftList}>{board.drafts.map(task => <details className={styles.draft} key={task.id}><summary><FileText aria-hidden="true" /><span>{task.title}</span><span className={styles.size}>{task.size}</span><ChevronDown className={styles.chevron} aria-hidden="true" /></summary><div className={styles.draftCopy}><p>{task.description}</p><div>File scope {task.scope.map(path => <code key={path}>{path}</code>)}</div><p>Done when: {task.acceptance || "No acceptance criteria supplied."}</p>{task.depends_on.length > 0 && <p>Waits for {dependencyNames(task)}.</p>}</div></details>)}</div>;
+    return <div className={styles.draftList}>{board.drafts.map(task => <details className={styles.draft} key={task.id}><summary><FileText aria-hidden="true" /><span>{task.title}</span><span className={styles.size}>{pointsLabel(task)}</span><ChevronDown className={styles.chevron} aria-hidden="true" /></summary><div className={styles.draftCopy}><p>{task.description}</p><div>File scope {task.scope.map(path => <code key={path}>{path}</code>)}</div><p>Done when: {task.acceptance || "No acceptance criteria supplied."}</p>{task.depends_on.length > 0 && <p>Waits for {dependencyNames(task)}.</p>}<Button variant="outline" className={styles.control} disabled={acting} aria-busy={board.approving && board.actionTaskId === task.id} onClick={() => runAction(() => board.approveTasks([task.id]))}>{board.approving && board.actionTaskId === task.id ? "Approving…" : "Approve this task"}</Button></div></details>)}</div>;
+  }
+  function personName(email: unknown) {
+    if (typeof email !== "string") return null;
+    return board.participants.find(person => person.email?.toLowerCase() === email.toLowerCase())?.name ?? email;
+  }
+  function eventAttribution(event: (typeof board.events)[number]) {
+    const approver = event.type === "approved" ? personName(event.data?.by) : null;
+    if (approver) return `Approved by ${approver}`;
+    if (event.agent_id) return agents.find(agent => agent.id === event.agent_id)?.name ?? `Agent ${event.agent_id}`;
+    const actor = personName(event.data?.by);
+    return actor ? `By ${actor}` : "Dashboard";
   }
   return <div className={styles.workspace}>
     <aside className={styles.sidebar} data-open={navOpen} aria-label="Workspace navigation">
@@ -157,7 +180,7 @@ export function MissionDashboard() {
       {board.error && <div className={styles.connectionError} role="alert"><h2>Couldn’t load the workspace</h2><p>{board.error}</p><Button variant="outline" className={styles.control} onClick={board.retry} disabled={board.loading}>{board.loading ? "Retrying…" : "Retry connection"}</Button></div>}
       {board.actionError && <p role="alert" className={styles.formError}>{board.actionError}</p>}
       {creating ? <MissionCreator mode="live" planning={board.planning} disabled={acting} error={board.planningError} onCancel={() => { setCreating(false); focusHeading(); }} onPlan={async input => { const response = await board.planMission(input); setCreating(false); setView("attention"); setInspectedId(null); focusHeading(); return response; }} /> : (board.loading || board.missionId !== null) && !mission ? <div className={styles.empty} role="status" aria-busy="true"><h1 ref={headingRef} tabIndex={-1}>Loading your workspace…</h1><p>{board.missionId ? "Waiting for the selected mission to arrive from Firestore." : "Connecting to your team’s missions, tasks and workers."}</p><Loader2 className="size-5 animate-spin motion-reduce:animate-none" aria-hidden="true" /></div> : !mission ? !board.error && <div className={styles.empty}><h1 ref={headingRef} tabIndex={-1}>Your mission workspace</h1><p>Create a mission to turn a goal into scoped draft tasks. Review the plan before approving work for your team.</p><Button className={styles.control} onClick={newMission}><Plus className="size-4" aria-hidden="true" />New mission</Button></div> : <>
-        <header className={styles.pageHeader}><div className={styles.titleLine}><h1 ref={headingRef} tabIndex={-1}>{mission.title}</h1><span className={styles.missionState}>{missionLabels[mission.status]}</span></div><p className={styles.goal}>{mission.goal}</p>{(board.cachedPlan || mission.plan_source === "cached_demo") && <p className={styles.cachedPlan}>Cached demo plan · Gemini was unavailable when this plan was created.</p>}{mission.plan_doc_url && <a className={styles.documentLink} href={mission.plan_doc_url} target="_blank" rel="noreferrer">Open plan document<ArrowUpRight className="size-3.5" aria-hidden="true" /></a>}{mission.source_doc_url && <a className={styles.documentLink} href={mission.source_doc_url} target="_blank" rel="noreferrer">Open source brief<ArrowUpRight className="size-3.5" aria-hidden="true" /></a>}</header>
+        <header className={styles.pageHeader}><div className={styles.titleLine}><h1 ref={headingRef} tabIndex={-1}>{mission.title}</h1><span className={styles.missionState}>{missionLabels[derivedMissionStatus(mission.status, tasks)]}</span></div><p className={styles.goal}>{mission.goal}</p>{(board.cachedPlan || mission.plan_source === "cached_demo") && <p className={styles.cachedPlan}>Cached demo plan · Gemini was unavailable when this plan was created.</p>}{mission.plan_doc_url && <a className={styles.documentLink} href={mission.plan_doc_url} target="_blank" rel="noreferrer">Open plan document<ArrowUpRight className="size-3.5" aria-hidden="true" /></a>}{mission.source_doc_url && <a className={styles.documentLink} href={mission.source_doc_url} target="_blank" rel="noreferrer">Open source brief<ArrowUpRight className="size-3.5" aria-hidden="true" /></a>}</header>
         <Tabs className={styles.viewTabs} value={view} onValueChange={value => { setView(String(value) as View); setInspectedId(null); setConfirmedMerged(null); }}>
           <TabsList variant="line" className={styles.tabList} aria-label="Mission views"><TabsTrigger className={styles.tab} value="attention">Attention<span className={styles.count}>{attentionCount}</span></TabsTrigger><TabsTrigger className={styles.tab} value="tasks">Tasks<span className={styles.count}>{tasks.length}</span></TabsTrigger><TabsTrigger className={styles.tab} value="team">Team<span className={styles.count}>{agents.length}</span></TabsTrigger><TabsTrigger className={styles.tab} value="activity">Activity</TabsTrigger></TabsList>
           <TabsContent value="attention">
@@ -170,7 +193,7 @@ export function MissionDashboard() {
           </TabsContent>
           <TabsContent value="tasks">
             {tasks.length === 0 && <div className={styles.empty}><h2>No tasks yet</h2><p>This mission has no tasks. Start a new mission to request a draft plan.</p><Button variant="outline" className={styles.control} onClick={newMission}>New mission</Button></div>}
-            {([{ title: "Queued", items: board.queue }, { title: "Drafts", items: board.drafts }, { title: "In progress", items: tasks.filter(task => ["claimed", "in_progress"].includes(task.status)) }, { title: "In review", items: reviews }, { title: "Other outcomes", items: tasks.filter(task => ["done", "cancelled", "failed"].includes(task.status)) }]).filter(group => group.items.length).map(group => <section className={styles.taskSection} key={group.title}><div className={styles.sectionHead}><h2>{group.title} <span className={styles.count}>{group.items.length}</span></h2>{group.title === "Drafts" && approvalButton()}</div>{group.title === "Queued" && <p className={styles.hint}>Priority runs top to bottom. Dependencies and scope locks determine which tasks can be claimed.</p>}{group.items.map((task, index) => <article className={styles.taskRow} key={task.id}><div><button className={styles.taskTitle} onClick={event => inspectedId === task.id ? closeInspector() : inspect(task.id, event.currentTarget)} aria-expanded={inspectedId === task.id}>{group.title === "Queued" && <span className={styles.order}>{index + 1}</span>}{task.title}</button><p>{task.scope.join(", ") || "No scope supplied"}</p>{task.depends_on.length > 0 && <p>Waits for {dependencyNames(task)}.</p>}</div><span className={styles.taskState}>{statusLabels[task.status]}</span>{taskDetail(task)}</article>)}</section>)}
+            {([{ title: "Queued", items: board.queue }, { title: "Drafts", items: board.drafts }, { title: "In progress", items: tasks.filter(task => ["claimed", "in_progress"].includes(task.status)) }, { title: "In review", items: reviews }, { title: "Other outcomes", items: tasks.filter(task => ["done", "cancelled", "failed"].includes(task.status)) }]).filter(group => group.items.length).map(group => <section className={styles.taskSection} key={group.title}><div className={styles.sectionHead}><h2>{group.title} <span className={styles.count}>{group.items.length}</span></h2>{group.title === "Drafts" && approvalButton()}</div>{group.title === "Queued" && <p className={styles.hint}>Priority runs top to bottom. Dependencies and scope locks determine which tasks can be claimed.</p>}{group.items.map((task, index) => <article className={styles.taskRow} key={task.id}><div><button className={styles.taskTitle} onClick={event => inspectedId === task.id ? closeInspector() : inspect(task.id, event.currentTarget)} aria-expanded={inspectedId === task.id}>{group.title === "Queued" && <span className={styles.order}>{index + 1}</span>}{task.title}</button><p>{task.scope.join(", ") || "No scope supplied"}</p>{task.depends_on.length > 0 && <p>Waits for {dependencyNames(task)}.</p>}</div><span className={styles.taskState}><span className={styles.size}>{pointsLabel(task)}</span> {statusLabels[task.status]}</span>{taskDetail(task)}</article>)}</section>)}
           </TabsContent>
           <TabsContent value="team">
             {agents.length ? <><h2>{agents.length} {agents.length === 1 ? "worker has" : "workers have"} joined the team</h2><p className={styles.intro}>{agents.filter(agent => agent.status === "working").length} working · {agents.filter(agent => agent.status === "idle").length} idle · {agents.filter(agent => agent.status === "blocked").length} blocked · {agents.filter(agent => agent.status === "offline").length} offline. Team workers and workload span all missions.</p>
@@ -188,8 +211,7 @@ export function MissionDashboard() {
             }
             const event = item.event;
             const task = event.task_id ? board.allTasks.find(task => task.id === event.task_id) : undefined;
-            const agent = event.agent_id ? agents.find(agent => agent.id === event.agent_id) : undefined;
-            return <article className={styles.event} key={item.id}><div><p>{event.message ?? event.type.replaceAll("_", " ")}</p><small>{task?.title ?? "Mission event"} · {agent?.name ?? "No worker attributed"}</small>{task?.mission_id === mission.id && <Button variant="ghost" className={`${styles.control} mt-2`} onClick={clickEvent => { setView("tasks"); inspect(task.id, clickEvent.currentTarget); }}>Inspect task</Button>}</div><time dateTime={event.created_at} className={styles.numeric}>{age(event.created_at, board.now)}</time></article>;
+            return <article className={styles.event} key={item.id}><div><p>{event.message ?? event.type.replaceAll("_", " ")}</p><small>{task?.title ?? "Mission event"} · {eventAttribution(event)}</small>{task?.mission_id === mission.id && <Button variant="ghost" className={`${styles.control} mt-2`} onClick={clickEvent => { setView("tasks"); inspect(task.id, clickEvent.currentTarget); }}>Inspect task</Button>}</div><time dateTime={event.created_at} className={styles.numeric}>{age(event.created_at, board.now)}</time></article>;
           }) : <div className={styles.empty}><p>No history for this mission yet.</p><Button variant="outline" className={styles.control} onClick={() => setView("attention")}>View attention</Button></div>}</TabsContent>
         </Tabs>
         <Coordination />
