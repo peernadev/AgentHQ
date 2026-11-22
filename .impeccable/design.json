@@ -1,0 +1,306 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-22T04:17:34.605Z",
+  "title": "Design System: AgentHQ",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Graphite",
+        "canonical": "oklch(0.205 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.26 0 0)",
+          "oklch(0.38 0 0)",
+          "oklch(0.49 0 0)",
+          "oklch(0.61 0 0)",
+          "oklch(0.72 0 0)",
+          "oklch(0.84 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "primary-foreground": {
+        "role": "neutral",
+        "displayName": "Soft White",
+        "canonical": "oklch(0.985 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.26 0 0)",
+          "oklch(0.38 0 0)",
+          "oklch(0.49 0 0)",
+          "oklch(0.61 0 0)",
+          "oklch(0.72 0 0)",
+          "oklch(0.84 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "background": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "canonical": "oklch(1 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.26 0 0)",
+          "oklch(0.38 0 0)",
+          "oklch(0.49 0 0)",
+          "oklch(0.61 0 0)",
+          "oklch(0.72 0 0)",
+          "oklch(0.84 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "foreground": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "oklch(0.145 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.26 0 0)",
+          "oklch(0.38 0 0)",
+          "oklch(0.49 0 0)",
+          "oklch(0.61 0 0)",
+          "oklch(0.72 0 0)",
+          "oklch(0.84 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Soft Chalk",
+        "canonical": "oklch(0.97 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.26 0 0)",
+          "oklch(0.38 0 0)",
+          "oklch(0.49 0 0)",
+          "oklch(0.61 0 0)",
+          "oklch(0.72 0 0)",
+          "oklch(0.84 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "muted-foreground": {
+        "role": "neutral",
+        "displayName": "Quiet Grey",
+        "canonical": "oklch(0.556 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.26 0 0)",
+          "oklch(0.38 0 0)",
+          "oklch(0.49 0 0)",
+          "oklch(0.61 0 0)",
+          "oklch(0.72 0 0)",
+          "oklch(0.84 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Hairline Grey",
+        "canonical": "oklch(0.922 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.26 0 0)",
+          "oklch(0.38 0 0)",
+          "oklch(0.49 0 0)",
+          "oklch(0.61 0 0)",
+          "oklch(0.72 0 0)",
+          "oklch(0.84 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "sidebar-surface": {
+        "role": "neutral",
+        "displayName": "Rail Mist",
+        "canonical": "color-mix(in oklch, oklch(0.97 0 0) 75%, oklch(1 0 0))",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.26 0 0)",
+          "oklch(0.38 0 0)",
+          "oklch(0.49 0 0)",
+          "oklch(0.61 0 0)",
+          "oklch(0.72 0 0)",
+          "oklch(0.84 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "destructive": {
+        "role": "semantic",
+        "displayName": "Failure Red",
+        "canonical": "oklch(0.577 0.245 27.325)",
+        "tonalRamp": [
+          "oklch(0.15 0.245 27.325)",
+          "oklch(0.26 0.245 27.325)",
+          "oklch(0.38 0.245 27.325)",
+          "oklch(0.49 0.245 27.325)",
+          "oklch(0.61 0.245 27.325)",
+          "oklch(0.72 0.245 27.325)",
+          "oklch(0.84 0.245 27.325)",
+          "oklch(0.95 0.245 27.325)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Mission headline",
+        "purpose": "The current mission title."
+      },
+      "title": {
+        "displayName": "Section title",
+        "purpose": "Readable section hierarchy."
+      },
+      "body": {
+        "displayName": "Workspace body",
+        "purpose": "Mission goals and explanatory copy."
+      },
+      "label": {
+        "displayName": "Control label",
+        "purpose": "Compact actions and labels."
+      },
+      "numeric": {
+        "displayName": "Operational figures",
+        "purpose": "Tabular counts, timestamps, workload points and code."
+      }
+    },
+    "shadows": [
+      {
+        "name": "action-announcement",
+        "value": "0 8px 28px color-mix(in oklch,var(--foreground) 8%,transparent)",
+        "purpose": "Transient feedback only; resting content stays flat."
+      }
+    ],
+    "motion": [
+      {
+        "name": "control-transition",
+        "value": "150ms cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "Inherited Tailwind control-state transitions; no decorative travel."
+      },
+      {
+        "name": "detail-scroll",
+        "value": "auto",
+        "purpose": "Evidence scrolls into view without animated travel."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "animation: none",
+        "purpose": "Loading spinners and skeletons honor reduced motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "compact-desktop-max",
+        "value": "1000px"
+      },
+      {
+        "name": "mobile-max",
+        "value": "700px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Primary approval and mock-planning action.",
+      "html": "<button class=\"ds-primary\">Approve 3 tasks</button>",
+      "css": ".ds-primary{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:7px 12px;border:1px solid transparent;border-radius:6px;font-family:var(--font-geist-sans,Geist),ui-sans-serif,system-ui,sans-serif;font-size:13px;font-weight:500;cursor:pointer;transition:background-color 150ms;background:var(--primary,oklch(0.205 0 0));color:var(--primary-foreground,oklch(0.985 0 0))}.ds-primary:hover{background:color-mix(in oklch,var(--primary,oklch(0.205 0 0)) 80%,transparent)}.ds-primary:focus-visible{outline:2px solid var(--foreground,oklch(0.145 0 0));outline-offset:4px}.ds-primary:disabled{opacity:.5;pointer-events:none}.ds-primary:active:not(:disabled){transform:translateY(1px)}@media(max-width:700px){.ds-primary{height:44px}}"
+    },
+    {
+      "name": "Outline button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "A secondary task action with a hairline boundary.",
+      "html": "<button class=\"ds-outline\">Review changes</button>",
+      "css": ".ds-outline{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:7px 12px;border:1px solid transparent;border-radius:6px;font-family:var(--font-geist-sans,Geist),ui-sans-serif,system-ui,sans-serif;font-size:13px;font-weight:500;cursor:pointer;transition:background-color 150ms;background:var(--background,oklch(1 0 0));color:var(--foreground,oklch(0.145 0 0));border-color:var(--border,oklch(0.922 0 0))}.ds-outline:hover,.ds-outline[aria-expanded=true]{background:var(--muted,oklch(0.97 0 0))}.ds-outline:focus-visible{outline:2px solid var(--foreground,oklch(0.145 0 0));outline-offset:4px}.ds-outline:disabled{opacity:.5;pointer-events:none}.ds-outline:active:not(:disabled){transform:translateY(1px)}@media(max-width:700px){.ds-outline{height:44px}}"
+    },
+    {
+      "name": "Ghost button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "A quiet action directly on the page.",
+      "html": "<button class=\"ds-ghost\">New mission</button>",
+      "css": ".ds-ghost{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:7px 12px;border:1px solid transparent;border-radius:6px;font-family:var(--font-geist-sans,Geist),ui-sans-serif,system-ui,sans-serif;font-size:13px;font-weight:500;cursor:pointer;transition:background-color 150ms;background:transparent;color:var(--muted-foreground,oklch(0.556 0 0))}.ds-ghost:hover{background:var(--muted,oklch(0.97 0 0));color:var(--foreground,oklch(0.145 0 0))}.ds-ghost:focus-visible{outline:2px solid var(--foreground,oklch(0.145 0 0));outline-offset:4px}.ds-ghost:disabled{opacity:.5;pointer-events:none}.ds-ghost:active:not(:disabled){transform:translateY(1px)}"
+    },
+    {
+      "name": "Mission name input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "A visible label and a restrained editable field.",
+      "html": "<label class=\"ds-field\">Mission name<input class=\"ds-input\" placeholder=\"Prepare the product demo\"></label>",
+      "css": ".ds-field{display:block;font-family:var(--font-geist-sans,Geist),ui-sans-serif,system-ui,sans-serif;font-size:14px;font-weight:500;color:var(--foreground,oklch(0.145 0 0))}.ds-input{display:block;width:100%;min-width:0;height:45px;margin-top:7px;padding:4px 10px;border:1px solid var(--input,oklch(0.922 0 0));border-radius:6px;background:var(--background,oklch(1 0 0));color:var(--foreground,oklch(0.145 0 0));font-family:var(--font-geist-sans,Geist),ui-sans-serif,system-ui,sans-serif;font-size:15px;transition:border-color 150ms}.ds-input::placeholder{color:var(--muted-foreground,oklch(0.556 0 0))}.ds-input:hover{border-color:var(--muted-foreground,oklch(0.556 0 0))}.ds-input:focus-visible{outline:2px solid var(--foreground,oklch(0.145 0 0));outline-offset:4px}.ds-input:disabled{opacity:.5;cursor:not-allowed}.ds-input[aria-invalid=true]{border-color:var(--destructive,oklch(0.577 0.245 27.325))}@media(max-width:700px){.ds-input{font-size:16px}}"
+    },
+    {
+      "name": "Selected mission navigation",
+      "kind": "nav",
+      "refersTo": "mission-nav-active",
+      "description": "Mission navigation with selected-state tone and a file icon.",
+      "html": "<nav aria-label=\"Missions\"><button class=\"ds-mission\" aria-current=\"page\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z\"/><path d=\"M14 2v6h6M8 13h8M8 17h6\"/></svg>Build the team workspace</button></nav>",
+      "css": ".ds-mission{display:flex;align-items:center;gap:9px;width:100%;min-height:40px;padding:10px 12px;border:0;border-radius:6px;background:transparent;color:var(--muted-foreground,oklch(0.556 0 0));font-family:var(--font-geist-sans,Geist),ui-sans-serif,system-ui,sans-serif;font-size:13px;font-weight:400;line-height:1.35;text-align:left;cursor:pointer}.ds-mission[aria-current=page]{background:var(--muted,oklch(0.97 0 0));color:var(--foreground,oklch(0.145 0 0));font-weight:500}.ds-mission:hover{background:var(--muted,oklch(0.97 0 0));color:var(--foreground,oklch(0.145 0 0))}.ds-mission:focus-visible{outline:2px solid var(--foreground,oklch(0.145 0 0));outline-offset:4px}.ds-mission svg{flex-shrink:0}@media(max-width:700px){.ds-mission{min-height:44px;font-size:14px}}"
+    },
+    {
+      "name": "Mission view tabs",
+      "kind": "nav",
+      "description": "Line tabs with quiet numeric counts and an active underline.",
+      "html": "<div class=\"ds-tabs\" role=\"tablist\" aria-label=\"Mission views\"><button role=\"tab\" aria-selected=\"true\" class=\"ds-tab\">Attention <span class=\"ds-count\">2</span></button><button role=\"tab\" aria-selected=\"false\" class=\"ds-tab\" tabindex=\"-1\">Tasks <span class=\"ds-count\">8</span></button><button role=\"tab\" aria-selected=\"false\" class=\"ds-tab\" tabindex=\"-1\">Team <span class=\"ds-count\">6</span></button><button role=\"tab\" aria-selected=\"false\" class=\"ds-tab\" tabindex=\"-1\">Activity</button></div>",
+      "css": ".ds-tabs{display:flex;gap:23px;height:47px;border-bottom:1px solid var(--border,oklch(0.922 0 0));font-family:var(--font-geist-sans,Geist),ui-sans-serif,system-ui,sans-serif}.ds-tab{position:relative;display:inline-flex;align-items:center;gap:7px;height:46px;padding:8px 0 13px;border:0;background:transparent;color:var(--muted-foreground,oklch(0.556 0 0));font-family:var(--font-geist-sans,Geist),ui-sans-serif,system-ui,sans-serif;font-size:14px;font-weight:400;cursor:pointer}.ds-tab[aria-selected=true]{color:var(--foreground,oklch(0.145 0 0));font-weight:600}.ds-tab[aria-selected=true]::after{content:\"\";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--foreground,oklch(0.145 0 0))}.ds-tab:hover{color:var(--foreground,oklch(0.145 0 0))}.ds-tab:focus-visible{outline:2px solid var(--foreground,oklch(0.145 0 0));outline-offset:4px}.ds-count{font-family:var(--font-geist-mono,\"Geist Mono\"),ui-monospace,monospace;font-size:12px;font-weight:400;font-variant-numeric:tabular-nums;color:var(--muted-foreground,oklch(0.556 0 0))}@media(max-width:700px){.ds-tabs{gap:0;justify-content:space-between}.ds-tab{font-size:13px;gap:5px}.ds-count{font-size:11px}}"
+    },
+    {
+      "name": "Attention row",
+      "kind": "custom",
+      "description": "An open decision row with a divider and a concrete action.",
+      "html": "<article class=\"ds-row\"><div><h3 class=\"ds-row-title\">How long should an invite stay valid?</h3><p class=\"ds-row-copy\">A teammate’s worker is blocked until you decide.</p></div><button class=\"ds-row-action\">Unblock worker</button></article>",
+      "css": ".ds-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:22px;padding:23px 0;border-bottom:1px solid var(--border,oklch(0.922 0 0));color:var(--foreground,oklch(0.145 0 0));font-family:var(--font-geist-sans,Geist),ui-sans-serif,system-ui,sans-serif}.ds-row-title{margin:0;font-size:16px;line-height:1.5;letter-spacing:-.15px;font-weight:500}.ds-row-copy{margin:5px 0 0;font-size:14px;line-height:1.55;color:var(--muted-foreground,oklch(0.556 0 0))}.ds-row-action{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:7px 12px;border:1px solid transparent;border-radius:6px;font-family:var(--font-geist-sans,Geist),ui-sans-serif,system-ui,sans-serif;font-size:13px;font-weight:500;cursor:pointer;transition:background-color 150ms;background:var(--background,oklch(1 0 0));color:var(--foreground,oklch(0.145 0 0));border-color:var(--border,oklch(0.922 0 0))}.ds-row-action:hover{background:var(--muted,oklch(0.97 0 0))}.ds-row-action:focus-visible{outline:2px solid var(--foreground,oklch(0.145 0 0));outline-offset:4px}.ds-row-action:disabled{opacity:.5;pointer-events:none}.ds-row-action:active:not(:disabled){transform:translateY(1px)}@media(max-width:700px){.ds-row{display:block;padding:20px 0}.ds-row-title{font-size:15px}.ds-row-copy{font-size:13px}.ds-row-action{height:44px;margin-top:14px}}"
+    },
+    {
+      "name": "Inline evidence container",
+      "kind": "card",
+      "refersTo": "detail",
+      "description": "A muted container reserved for details requested by the user.",
+      "html": "<section class=\"ds-detail\" tabindex=\"-1\"><h3 class=\"ds-detail-title\">Review evidence</h3><p class=\"ds-detail-copy\">Passing checks and a human merge remain required.</p><code class=\"ds-detail-code\">src/components/mission-dashboard.tsx</code><button class=\"ds-detail-close\">Close details</button></section>",
+      "css": ".ds-detail{padding:20px;border-radius:6px;background:var(--muted,oklch(0.97 0 0));color:var(--foreground,oklch(0.145 0 0));font-family:var(--font-geist-sans,Geist),ui-sans-serif,system-ui,sans-serif}.ds-detail:focus{outline:2px solid var(--border,oklch(0.922 0 0));outline-offset:4px}.ds-detail-title{margin:0 0 12px;font-size:16px;font-weight:600;line-height:1.5}.ds-detail-copy{margin:0 0 15px;max-width:68ch;font-size:13px;line-height:1.65;color:var(--muted-foreground,oklch(0.556 0 0))}.ds-detail-code{display:block;overflow-wrap:anywhere;font-family:var(--font-geist-mono,\"Geist Mono\"),ui-monospace,monospace;font-size:12px}.ds-detail-close{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:7px 12px;border:1px solid transparent;border-radius:6px;font-family:var(--font-geist-sans,Geist),ui-sans-serif,system-ui,sans-serif;font-size:13px;font-weight:500;cursor:pointer;transition:background-color 150ms;margin-top:16px;background:transparent;color:var(--foreground,oklch(0.145 0 0))}.ds-detail-close:hover{background:color-mix(in oklch,var(--muted,oklch(0.97 0 0)),var(--foreground,oklch(0.145 0 0)) 5%)}.ds-detail-close:focus-visible{outline:2px solid var(--foreground,oklch(0.145 0 0));outline-offset:4px}.ds-detail-close:disabled{opacity:.5;pointer-events:none}.ds-detail-close:active:not(:disabled){transform:translateY(1px)}@media(max-width:700px){.ds-detail{padding:16px}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Quiet workspace",
+    "overview": "AgentHQ feels like a clear shared workbench: restrained, readable and spacious. A subtly toned mission rail supports one bright working page. Typography, alignment and hairline separators organize the work; decoration stays secondary to decisions.\n\nThe user approved option 01 on 2026-11-21 as the replacement visual direction. This is an original AgentHQ identity, with a monochrome SVG mark expressing coordinated scoped work. It does not imitate Apple or the earlier generic dashboard.",
+    "keyCharacteristics": [
+      "A neutral light canvas, graphite controls and a quiet sidebar.",
+      "Flat rows, generous spacing and details revealed on demand.",
+      "Geist Sans for reading; Geist Mono with tabular figures for operational numbers.",
+      "Explicit action labels, visible focus and readable status words."
+    ],
+    "rules": [
+      {
+        "name": "The Neutral First Rule",
+        "body": "Use semantic tokens from the incumbent stylesheet. Do not add decorative status palettes, gradients or colored panels to this workspace.",
+        "section": "colors"
+      },
+      {
+        "name": "The Two Roles Rule",
+        "body": "Geist Mono identifies operational values; it is not a second headline or body style.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Surface Rule",
+        "body": "Do not add resting card shadows or elevated panels. Focus is an accessibility cue, not ambient depth.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do preserve the semantic shadcn tokens and light Quiet workspace.",
+      "Do use hairlines, alignment and spacing before adding containers.",
+      "Do keep numeric figures and timestamps in Geist Mono with tabular figures.",
+      "Do expose action consequences and evidence when the user needs them.",
+      "Do keep loading, empty, validation, disabled and keyboard-focus states readable at 375px.",
+      "Do distinguish local mock behavior from live planning, dispatch or review."
+    ],
+    "donts": [
+      "Don't bring back the generic dashboard identity or an Apple imitation.",
+      "Don't reintroduce a dense card grid or permanent inspector into the approved mission page.",
+      "Don't add heavy shadows, gradient decoration or competing accent colors.",
+      "Don't use color alone to identify task or worker state.",
+      "Don't make a Gemini review appear to replace checks or human merge."
+    ]
+  }
+}
