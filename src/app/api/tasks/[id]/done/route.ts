@@ -3,7 +3,7 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { col, getDb } from "@/lib/server/firebase-admin";
 import { HttpError, handle, optStr, readBody } from "@/lib/server/http";
 import { requireTeamUser } from "@/lib/server/team-auth";
-import { addEvent, parseTaskId } from "@/lib/server/tasks";
+import { addEvent, parseTaskId, readMission, writeMissionStatus } from "@/lib/server/tasks";
 
 // POST /api/tasks/:id/done { summary? }: dashboard, after the PR is merged. in_review -> done.
 // Releases the scope lock (dependents become claimable) and bumps the participant's tasks_done.
@@ -23,6 +23,7 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
     const agent = agentId ? await tx.get(col.agents().doc(agentId)) : null;
     const participantId = agent?.get("participant_id") as string | undefined;
     const participant = participantId ? await tx.get(col.participants().doc(participantId)) : null;
+    const mission = await readMission(tx, snap.get("mission_id"));
 
     const now = Timestamp.now();
     tx.update(ref, {
@@ -30,6 +31,7 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
       ...(summary ? { result_summary: summary } : {}),
     });
     tx.set(col.scopeRegistry(), { locks: { [id]: FieldValue.delete() }, updated_at: now }, { merge: true });
+    writeMissionStatus(tx, mission, { [id]: "done" }, now);
     if (participant?.exists) tx.update(participant.ref, { tasks_done: FieldValue.increment(1) });
     addEvent(tx, {
       type: "done", task_id: id, agent_id: agentId, mission_id: snap.get("mission_id") ?? null,

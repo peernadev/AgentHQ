@@ -1,11 +1,14 @@
 import "server-only";
 import { Timestamp, type DocumentData, type Transaction } from "firebase-admin/firestore";
-import type { Agent, TaskStatus } from "@/types/api";
+import type { Agent, MissionStatus, TaskStatus } from "@/types/api";
 import { col, getDb } from "./firebase-admin";
 import { HttpError } from "./http";
+import { deriveMissionStatus } from "./mission-status";
 import type { ParsedTask } from "./task-input";
 
-export const LEASE_MS = 10 * 60 * 1000;
+// Lease length: LEASE_MINUTES env (default 10). Also how long an agent counts as alive after a heartbeat.
+const leaseMinutes = Number(process.env.LEASE_MINUTES);
+export const LEASE_MS = (Number.isFinite(leaseMinutes) && leaseMinutes > 0 ? leaseMinutes : 10) * 60 * 1000;
 export const ACTIVE: TaskStatus[] = ["claimed", "in_progress"];
 
 // Task ids are UUIDs we generate; also accept any safe Firestore id (no "/" path tricks).
@@ -73,6 +76,34 @@ export function writeDraftTasks(
   }
 }
 
+/** What a mission's status update needs, read in the transaction's read phase. */
+export interface MissionRead { id: string; current: MissionStatus; statuses: Map<string, string> }
+
+/** Reads a mission and its tasks (reads only). null if there's no mission. */
+export async function readMission(tx: Transaction, missionId: string | null | undefined): Promise<MissionRead | null> {
+  if (!missionId) return null;
+  const [mission, tasks] = await Promise.all([
+    tx.get(col.missions().doc(missionId)),
+    tx.get(col.tasks().where("mission_id", "==", missionId)),
+  ]);
+  if (!mission.exists) return null;
+  return {
+    id: missionId, current: mission.get("status") as MissionStatus,
+    statuses: new Map(tasks.docs.map((d) => [d.id, d.get("status") as string])),
+  };
+}
+
+/** Writes the mission's derived status after `changes` ({ taskId: newStatus }), plus an event if it changed. */
+export function writeMissionStatus(tx: Transaction, m: MissionRead | null, changes: Record<string, string>, now: Timestamp) {
+  if (!m) return;
+  const statuses = new Map(m.statuses);
+  for (const [id, s] of Object.entries(changes)) if (statuses.has(id)) statuses.set(id, s);
+  const next = deriveMissionStatus([...statuses.values()], m.current);
+  if (next === m.current) return;
+  tx.update(col.missions().doc(m.id), { status: next });
+  addEvent(tx, { type: "mission_status", mission_id: m.id, message: next, data: { from: m.current, to: next } }, now);
+}
+
 /**
  * Runs `apply` on a task in a transaction, only if this agent holds it with this attempt_id
  * and it is in one of `from`. Throws 404 / 409 with a reason otherwise. `apply` returns the
@@ -97,7 +128,10 @@ export async function mutateOwnTask(
     if (!from.includes(task.status)) {
       throw new HttpError(409, `Task is "${task.status}"; expected ${from.join(" or ")}`);
     }
+    const mission = await readMission(tx, task.mission_id);
     const now = Timestamp.now();
-    tx.update(ref, { ...apply(tx, task, now), updated_at: now });
+    const update = apply(tx, task, now);
+    tx.update(ref, { ...update, updated_at: now });
+    if (typeof update.status === "string") writeMissionStatus(tx, mission, { [taskId]: update.status }, now);
   });
 }
