@@ -12,6 +12,7 @@ service cloud.firestore {
     match /tasks/{id}        { allow read: if signedIn(); allow write: if false; }
     match /events/{id}       { allow read: if signedIn(); allow write: if false; }
     match /meta/{id}         { allow read: if signedIn(); allow write: if false; }
+    match /messages/{id}     { allow read: if signedIn(); allow write: if false; }
 
     // Never readable from the browser.
     match /agentTokens/{id}  { allow read, write: if false; }

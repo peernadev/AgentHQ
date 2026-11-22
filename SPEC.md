@@ -71,6 +71,8 @@ tasks/{id}          mission_id, title, description, acceptance, priority, size(S
                     checks{lint,typecheck,build}, review{verdict,notes,sha}, result_summary,
                     created_by, claimed_at, completed_at, created_at, updated_at
 events/{auto}       mission_id, task_id, agent_id, type, message, data, created_at
+messages/{id}       from_agent, from_name, to_agent, to_task, text, created_at, read_at
+                    (agent -> agent; each send also logs a "message" event)
 meta/scopeRegistry  locks: { [taskId]: string[] }, updated_at
 outbox/{key}        kind(plan_doc|handoff_doc|calendar_event), mission_id, status, result_id
 ```
@@ -111,6 +113,8 @@ which serializes claims (same role as the Postgres advisory lock).
 
 ## 8. API (Next.js route handlers)
 Agent routes: `Authorization: Bearer <agent token>`; every call is a heartbeat and renews the lease.
+Every successful agent-route response also carries `inbox`: the agent's unread messages
+(oldest first, max 50), marked read by that response. Error responses leave them unread.
 | Method | Route | Body | Who |
 |---|---|---|---|
 | POST | /api/agents/join | { code, participant, name, machine?, tool?, model?, role? } | CLI |
@@ -118,6 +122,8 @@ Agent routes: `Authorization: Bearer <agent token>`; every call is a heartbeat a
 | POST | /api/tasks/:id/progress | { attempt_id, message } | worker |
 | POST | /api/tasks/:id/review | { attempt_id, pr_url, branch, head_sha, checks, summary? } | worker |
 | POST | /api/tasks/:id/fail | { attempt_id, reason, log_excerpt? } | worker |
+| POST | /api/messages | { to_agent (id or name) \| to_task, text } → { message_id, to_agent, to_name } | any agent |
+| GET | /api/messages | none → { inbox } | any agent |
 | POST | /api/tasks/:id/done | { summary? } | dashboard (after merge) |
 | POST | /api/tasks | { mission_id?, tasks: CreateTaskInput[] } | orchestrator agent |
 | PATCH | /api/tasks/:id | UpdateTaskInput | dashboard |
@@ -139,8 +145,11 @@ hq review <id> --pr <url> --branch <b>     # CLI fills head_sha and runs lint/ty
 hq fail <id> "reason"       # attaches the last 40 lines of the failing check
 hq status [--json]
 hq tasks add plan.json      # orchestrator agents
+hq msg <agent|task> "text"  # message an agent (id or name) or a task's current agent
+hq inbox                    # heartbeat + show unread messages
 ```
-The CLI keeps attempt_id in .hq.json and sends it automatically.
+The CLI keeps attempt_id in .hq.json and sends it automatically. Every hq call prints new
+inbox messages to stderr.
 
 ## 10. Ownership
 - **A, mission-control UI:** `src/app/(dashboard)/**`, `src/components/**`, `src/lib/client/**`

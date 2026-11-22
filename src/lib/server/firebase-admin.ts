@@ -27,5 +27,6 @@ export const col = {
   tasks: () => getDb().collection("tasks"),
   missions: () => getDb().collection("missions"),
   events: () => getDb().collection("events"),
+  messages: () => getDb().collection("messages"),
   scopeRegistry: () => getDb().collection("meta").doc("scopeRegistry"),
 };

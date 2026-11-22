@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
 import type { AgentRole, AgentTool, JoinResponse } from "@/types/api";
 import { col, getDb } from "@/lib/server/firebase-admin";
 import { hashToken, newToken, safeEqual } from "@/lib/server/auth";
 import { HttpError, handle, optStr, readBody, str } from "@/lib/server/http";
+import { agentJson } from "@/lib/server/messages";
 
 const TOOLS: AgentTool[] = ["claude", "codex", "antigravity", "other"];
 
@@ -67,5 +67,5 @@ export const POST = handle(async (req: Request) => {
     return { agent_id: agentId, participant_id: participantId };
   });
 
-  return NextResponse.json<JoinResponse>({ ...result, token });
+  return agentJson<JoinResponse>(result.agent_id, { ...result, token });
 });

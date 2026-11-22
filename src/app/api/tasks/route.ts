@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { NextResponse } from "next/server";
 import { requireAgent } from "@/lib/server/auth";
 import { col, getDb } from "@/lib/server/firebase-admin";
+import { agentJson } from "@/lib/server/messages";
 import { HttpError, handle, optStr, readBody } from "@/lib/server/http";
 import { parseTaskBatch } from "@/lib/server/task-input";
 import { readDraftContext, writeDraftTasks } from "@/lib/server/tasks";
@@ -24,5 +24,5 @@ export const POST = handle(async (req: Request) => {
     if (mission && !mission.exists) throw new HttpError(400, `Mission "${missionId}" not found`);
     writeDraftTasks(tx, tasks, ctx, { missionId, createdBy: agent.name, agentId: agent.id });
   });
-  return NextResponse.json({ ids: tasks.map((t) => t.id) });
+  return agentJson(agent.id, { ids: tasks.map((t) => t.id) });
 });
