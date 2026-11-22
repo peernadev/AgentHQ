@@ -43,7 +43,7 @@ export function MissionDashboard() {
   const average = board.workload.reduce((sum, person) => sum + person.points, 0) / board.workload.length;
   // Native meters share a scale, so both bars and the average describe the same points.
   const scale = Math.max(6, ...board.workload.map(person => person.points));
-  const events = board.events.filter(event => event.task_id && board.mission.taskIds.includes(event.task_id));
+  const events = board.events.filter(event => event.mission_id === board.mission.id || (event.mission_id === null && event.task_id !== null && board.mission.taskIds.includes(event.task_id)));
   function inspect(id: string) {
     board.selectTask(id);
     if (window.matchMedia("(max-width: 1439px)").matches) {
@@ -52,7 +52,7 @@ export function MissionDashboard() {
     }
   }
   return (
-    <main className="min-h-screen [font-family:var(--font-geist-sans),ui-sans-serif,system-ui,sans-serif] bg-muted/35 text-foreground selection:bg-primary selection:text-primary-foreground">
+    <main className="min-h-screen [font-family:var(--font-geist-sans),ui-sans-serif,system-ui,sans-serif] [&_code]:[font-family:inherit] bg-muted/35 text-foreground selection:bg-primary selection:text-primary-foreground">
       <header className="border-b bg-background px-4 py-4 sm:px-6">
         <div className="mx-auto flex max-w-[1800px] flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3"><div className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground"><Layers3 className="size-6" aria-hidden="true" /></div><div><p className="text-xl font-bold tracking-tight">AgentHQ</p><p className="text-sm text-foreground/70">One team. Every agent in view.</p></div></div>
@@ -83,13 +83,14 @@ export function MissionDashboard() {
                     <h3 className="mb-3 flex items-center gap-2 font-semibold"><span className={`flex size-8 items-center justify-center rounded-full text-sm ${personStyles[index].avatar}`}>{person.name[0]}</span>{person.name}<span className="ml-auto text-sm font-normal text-foreground/65">{agents.filter(agent => agent.participant_id === person.id).length} agents</span></h3>
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">{agents.filter(agent => agent.participant_id === person.id).map(agent => {
                       const currentTask = tasks.find(item => item.id === agent.current_task_id);
+                      const heldScopes = board.scopeLocks[agent.id] ?? [];
                       return <Card key={agent.id} className={`gap-3 ${agent.status === "offline" ? "bg-muted/70" : ""}`}>
                         <CardContent className="space-y-3">
                           <div className="flex flex-wrap items-center justify-between gap-2"><span className="break-all text-base font-semibold">{agent.name}</span><Status status={agent.status} /></div>
                           <p className="flex items-center gap-1.5 text-sm text-foreground/70"><Terminal className="size-4 shrink-0" />{agent.tool} · {agent.machine}</p>
                           {currentTask ? <button onClick={() => inspect(currentTask.id)} className="block text-left text-base font-medium underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">{currentTask.title}<ArrowUpRight className="ml-1 inline size-4" /></button> : <p className="text-base font-medium">{agent.status === "offline" ? "Disconnected" : "Ready for a task"}</p>}
                           <p className="min-h-10 text-sm leading-5 text-foreground/75">{agent.note}</p>
-                          <div className="border-t pt-3"><p className="mb-1 text-sm font-medium">Scope {currentTask ? "reserved" : "available"}</p>{currentTask ? currentTask.scope.map(path => <code key={path} className="block break-all text-sm text-foreground/75">{path}</code>) : <p className="text-sm text-foreground/65">No active file lock</p>}</div>
+                          <div className="border-t pt-3"><p className="mb-1 text-sm font-medium">{heldScopes.length ? "Scopes reserved until merge" : "Scope available"}</p>{heldScopes.length ? heldScopes.map(path => <code key={path} className="block break-all text-sm text-foreground/75">{path}</code>) : <p className="text-sm text-foreground/65">No active file lock</p>}</div>
                           <p className="flex items-center gap-1.5 text-sm tabular-nums text-foreground/70"><Clock3 className="size-4" />Heartbeat {age(agent.last_heartbeat, board.now)}</p>
                         </CardContent>
                       </Card>;
@@ -127,7 +128,7 @@ export function MissionDashboard() {
                 <div><h4 className="mb-2 font-semibold">Acceptance criteria</h4><p className="text-base leading-relaxed text-foreground/75">{task.acceptance || "No acceptance criteria supplied."}</p></div>
                 <div><h4 className="mb-2 flex items-center gap-2 font-semibold"><ShieldCheck className="size-4" />File scope</h4>{task.scope.map(path => <code key={path} className="block break-all rounded-md bg-muted px-3 py-2 text-sm">{path}</code>)}<p className="mt-2 text-sm text-foreground/70">{["claimed", "in_progress", "in_review"].includes(task.status) ? "Reserved until this task is complete." : "No active scope reservation."}</p></div>
                 {task.depends_on.length > 0 && <div><h4 className="mb-2 font-semibold">Dependencies</h4>{task.depends_on.map(id => <button key={id} className="block text-left text-sm underline underline-offset-4" onClick={() => board.selectTask(id)}>{tasks.find(item => item.id === id)?.title ?? id}</button>)}</div>}
-                <div className="border-t pt-5"><h4 className="mb-3 flex items-center gap-2 font-semibold"><GitPullRequest className="size-4" />Pull request</h4>{task.pr_url ? <><p className="mb-2 text-sm text-foreground/70">Mock PR · opens the repository PR list</p><a href={task.pr_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium underline underline-offset-4">Open repository pull requests<ArrowUpRight className="size-4" /></a><p className="mt-2 break-all font-mono text-sm text-foreground/70">{task.branch}</p><p className="mt-3 text-sm leading-relaxed text-foreground/75">{task.result_summary}</p></> : <p className="text-sm text-foreground/70">No pull request opened yet.</p>}</div>
+                <div className="border-t pt-5"><h4 className="mb-3 flex items-center gap-2 font-semibold"><GitPullRequest className="size-4" />Pull request</h4>{task.pr_url ? <><p className="mb-2 text-sm text-foreground/70">Mock PR · opens the repository PR list</p><a href={task.pr_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium underline underline-offset-4">Open repository pull requests<ArrowUpRight className="size-4" /></a><p className="mt-2 break-all text-sm text-foreground/70">{task.branch}</p><p className="mt-3 text-sm leading-relaxed text-foreground/75">{task.result_summary}</p></> : <p className="text-sm text-foreground/70">No pull request opened yet.</p>}</div>
                 <div><h4 className="mb-3 font-semibold">PR checks <span className="font-normal text-foreground/65">· mock</span></h4>{checks.length ? <ul className="space-y-2">{checks.map(check => <li key={check.name} className="flex items-center justify-between gap-2 text-sm"><span>{check.name}</span><span className={`flex items-center gap-1.5 font-medium ${check.passed ? "text-emerald-800" : "text-amber-900"}`}>{check.passed ? <Check className="size-4" /> : <Clock3 className="size-4" />}{check.passed ? "Passed" : "Failed"}</span></li>)}</ul> : <p className="text-sm text-foreground/70">Not reported. Checks appear when a sample PR is available.</p>}</div>
                 <div className="rounded-lg bg-violet-50 p-4 text-violet-950"><h4 className="mb-2 flex items-center gap-2 font-semibold"><Sparkles className="size-4" />Gemini review · mock</h4>{review && <p className="mb-2 text-sm font-semibold">{review.sha === task.head_sha ? review.verdict.replaceAll("_", " ") : "Stale review · SHA changed"} · <code>{review.sha}</code></p>}<p className="text-sm leading-relaxed">{review?.notes ?? "No sample review for this task yet."}</p><p className="mt-3 text-sm font-medium">Illustrative review. No AI service is connected. Passing checks and a human merge are still required.</p></div>
               </div> : <p>Select a task to inspect its scope and review.</p>}

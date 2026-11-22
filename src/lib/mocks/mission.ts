@@ -77,6 +77,7 @@ export function createMissionSnapshot(now = Date.now()): MissionSnapshot {
       { id: "e3", mission_id: "build", task_id: "t3", agent_id: "a5", type: "progress", message: "Omer needs a decision on invite expiry", data: null, created_at: ago(160) },
       { id: "e2", mission_id: "build", task_id: "t2", agent_id: "a3", type: "claimed", message: "Maya claimed the leaderboard · scope reserved", data: null, created_at: ago(260) },
       { id: "e1", mission_id: "build", task_id: "t5", agent_id: "a4", type: "done", message: "Shared API contracts completed · 1 workload point", data: null, created_at: ago(600) },
+      { id: "e0", mission_id: "build", task_id: null, agent_id: null, type: "created", message: "Mock mission created · team app brief ready", data: null, created_at: ago(1800) },
     ],
   };
 }

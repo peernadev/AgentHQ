@@ -19,6 +19,9 @@ export function useMissionData() {
   const mission = data.missions.find(item => item.id === missionId)!;
   const tasks = data.tasks.filter(task => mission.taskIds.includes(task.id));
   const agents = data.agents.filter(agent => mission.agentIds.includes(agent.id));
+  const scopeLocks = Object.fromEntries(data.agents.map(agent => [agent.id, [...new Set(data.tasks
+    .filter(task => task.agent_id === agent.id && ["claimed", "in_progress", "in_review"].includes(task.status))
+    .flatMap(task => task.scope))]]));
   const selectedTask = tasks.find(task => task.id === selectedTaskId) ?? tasks[0];
   const workload = data.participants.map(person => ({
     ...person,
@@ -66,5 +69,5 @@ export function useMissionData() {
     setNow(Date.now());
     setAnnouncement("Mock demo reset.");
   }
-  return { ...data, mission, tasks, agents, selectedTask, workload, drafts, queue, now, approving, announcement, selectMission, selectTask: setSelectedTaskId, approveAll, moveTask, reset };
+  return { ...data, mission, tasks, agents, scopeLocks, selectedTask, workload, drafts, queue, now, approving, announcement, selectMission, selectTask: setSelectedTaskId, approveAll, moveTask, reset };
 }
