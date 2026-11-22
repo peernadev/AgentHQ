@@ -1,8 +1,51 @@
 {
-  "note": "Placeholder: no live Gemini plan has been captured yet. Until one is, DEMO_FALLBACK has nothing to serve.",
-  "title": null,
-  "goal": null,
-  "model": null,
-  "captured_at": null,
-  "tasks": []
+  "note": "First successful live Gemini plan. Served only when Gemini is busy AND DEMO_FALLBACK=1, flagged as cached.",
+  "title": "Landing page",
+  "goal": "Build a landing page with signup and a leaderboard.",
+  "model": "gemini-3.5-flash-lite",
+  "captured_at": "2026-11-22T02:24:44.554Z",
+  "tasks": [
+    {
+      "key": "add-landing-page-and-leaderboard",
+      "title": "Add landing page and leaderboard types",
+      "description": "Define the TypeScript interfaces and types for user signups and leaderboard entries in src/types/api.ts so that frontend and backend components share a consistent contract.",
+      "acceptance": "- src/types/api.ts exports LeaderboardEntry and SignupPayload interfaces\n- Types compile successfully without errors",
+      "priority": 10,
+      "size": "S",
+      "scope": [
+        "src/types/api.ts"
+      ],
+      "depends_on": []
+    },
+    {
+      "key": "implement-leaderboard-api-endpoi",
+      "title": "Implement leaderboard API endpoint",
+      "description": "Create a backend API route to fetch leaderboard stats and recent signups from the data store in src/lib/server/ or create a new route if needed, returning the structured data.",
+      "acceptance": "- API route returns a JSON list of leaderboard entries\n- Uses shared types from src/types/api.ts",
+      "priority": 20,
+      "size": "M",
+      "scope": [
+        "src/lib/server/tasks.ts"
+      ],
+      "depends_on": [
+        "add-landing-page-and-leaderboard"
+      ]
+    },
+    {
+      "key": "build-landing-page-with-signup-a",
+      "title": "Build landing page with signup and leaderboard UI",
+      "description": "Create the main landing page components in src/app/page.tsx and src/components/ including a hero section, signup form, and a responsive leaderboard table using the shared types.",
+      "acceptance": "- Landing page renders hero, signup form, and leaderboard\n- Signup form handles user input and validates successfully\n- Leaderboard displays data properly on mobile and desktop",
+      "priority": 30,
+      "size": "M",
+      "scope": [
+        "src/app/page.tsx",
+        "src/components/"
+      ],
+      "depends_on": [
+        "add-landing-page-and-leaderboard",
+        "implement-leaderboard-api-endpoi"
+      ]
+    }
+  ]
 }
