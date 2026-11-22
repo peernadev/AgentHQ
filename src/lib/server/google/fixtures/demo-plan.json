@@ -1,15 +1,15 @@
 {
-  "note": "First successful live Gemini plan. Served only when Gemini is busy AND DEMO_FALLBACK=1, flagged as cached.",
+  "note": "Live Gemini plan (gemini-3.5-flash-lite, attempt 1) that passes every planner check, including the strict ones. Served only when Gemini is busy AND DEMO_FALLBACK=1, always flagged as cached.",
   "title": "Landing page",
-  "goal": "Build a landing page with signup and a leaderboard.",
+  "goal": "build a landing page with signup and a leaderboard",
   "model": "gemini-3.5-flash-lite",
-  "captured_at": "2026-11-22T02:24:44.554Z",
+  "captured_at": "2026-11-22T04:24:33.518Z",
   "tasks": [
     {
       "key": "add-landing-page-and-leaderboard",
       "title": "Add landing page and leaderboard types",
-      "description": "Define the TypeScript interfaces and types for user signups and leaderboard entries in src/types/api.ts so that frontend and backend components share a consistent contract.",
-      "acceptance": "- src/types/api.ts exports LeaderboardEntry and SignupPayload interfaces\n- Types compile successfully without errors",
+      "description": "Add TypeScript interfaces for user signup and leaderboard entries to src/types/api.ts.",
+      "acceptance": "- src/types/api.ts exports SignupRequest and LeaderboardEntry interfaces\n- Types compile successfully without errors",
       "priority": 10,
       "size": "S",
       "scope": [
@@ -18,33 +18,91 @@
       "depends_on": []
     },
     {
-      "key": "implement-leaderboard-api-endpoi",
-      "title": "Implement leaderboard API endpoint",
-      "description": "Create a backend API route to fetch leaderboard stats and recent signups from the data store in src/lib/server/ or create a new route if needed, returning the structured data.",
-      "acceptance": "- API route returns a JSON list of leaderboard entries\n- Uses shared types from src/types/api.ts",
+      "key": "create-signup-api-endpoint",
+      "title": "Create signup API endpoint",
+      "description": "Create src/app/api/signup/route.ts to handle user registrations from the landing page.",
+      "acceptance": "- POST /api/signup handles user submission and returns success status\n- Validates incoming payload properly",
       "priority": 20,
-      "size": "M",
+      "size": "S",
       "scope": [
-        "src/lib/server/tasks.ts"
+        "src/app/api/signup/route.ts"
       ],
       "depends_on": [
         "add-landing-page-and-leaderboard"
       ]
     },
     {
-      "key": "build-landing-page-with-signup-a",
-      "title": "Build landing page with signup and leaderboard UI",
-      "description": "Create the main landing page components in src/app/page.tsx and src/components/ including a hero section, signup form, and a responsive leaderboard table using the shared types.",
-      "acceptance": "- Landing page renders hero, signup form, and leaderboard\n- Signup form handles user input and validates successfully\n- Leaderboard displays data properly on mobile and desktop",
-      "priority": 30,
+      "key": "create-leaderboard-display-compo",
+      "title": "Create leaderboard display component",
+      "description": "Create src/components/landing/leaderboard-list.tsx to present the top users in a stylish table or list.",
+      "acceptance": "- Component fetches and displays leaderboard entries correctly\n- Handles loading and empty states cleanly",
+      "priority": 20,
       "size": "M",
       "scope": [
-        "src/app/page.tsx",
-        "src/components/"
+        "src/components/landing/leaderboard-list.tsx"
+      ],
+      "depends_on": [
+        "add-landing-page-and-leaderboard"
+      ]
+    },
+    {
+      "key": "create-leaderboard-api-endpoint",
+      "title": "Create leaderboard API endpoint",
+      "description": "Create src/app/api/leaderboard/route.ts to expose leaderboard rankings via GET.",
+      "acceptance": "- GET /api/leaderboard returns 200 with leaderboard data array\n- Uses server leaderboard helper correctly",
+      "priority": 20,
+      "size": "S",
+      "scope": [
+        "src/app/api/leaderboard/route.ts"
       ],
       "depends_on": [
         "add-landing-page-and-leaderboard",
-        "implement-leaderboard-api-endpoi"
+        "implement-leaderboard-server-dat"
+      ]
+    },
+    {
+      "key": "implement-leaderboard-server-dat",
+      "title": "Implement leaderboard server data fetching",
+      "description": "Create src/lib/server/leaderboard.ts to fetch top user rankings for the leaderboard.",
+      "acceptance": "- src/lib/server/leaderboard.ts provides a function to retrieve leaderboard entries\n- Returns structured data matching the api types",
+      "priority": 20,
+      "size": "M",
+      "scope": [
+        "src/lib/server/leaderboard.ts"
+      ],
+      "depends_on": [
+        "add-landing-page-and-leaderboard"
+      ]
+    },
+    {
+      "key": "create-signup-form-component",
+      "title": "Create signup form component",
+      "description": "Create src/components/landing/signup-form.tsx with input fields and validation for user registration.",
+      "acceptance": "- Component renders form elements at mobile and desktop sizes\n- Submits data to the signup api endpoint",
+      "priority": 20,
+      "size": "M",
+      "scope": [
+        "src/components/landing/signup-form.tsx"
+      ],
+      "depends_on": [
+        "add-landing-page-and-leaderboard"
+      ]
+    },
+    {
+      "key": "assemble-landing-page-with-signu",
+      "title": "Assemble landing page with signup and leaderboard",
+      "description": "Update src/app/page.tsx to combine the signup form and leaderboard components into a cohesive landing page.",
+      "acceptance": "- Root page renders both the signup form and leaderboard components\n- Page layout is responsive and visually appealing",
+      "priority": 30,
+      "size": "M",
+      "scope": [
+        "src/app/page.tsx"
+      ],
+      "depends_on": [
+        "create-signup-api-endpoint",
+        "create-leaderboard-api-endpoint",
+        "create-signup-form-component",
+        "create-leaderboard-display-compo"
       ]
     }
   ]
