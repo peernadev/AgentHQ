@@ -105,7 +105,29 @@ export interface HqEvent {
 
 export interface ScopeRegistry { locks: Record<string, string[]>; updated_at: string }
 
+/** Agent-to-agent message (messages/{id}). to_task is set when sent to a task's current agent. */
+export interface Message {
+  id: string;
+  from_agent: string;
+  from_name: string;
+  to_agent: string;
+  to_task: string | null;
+  text: string;
+  created_at: string;
+  read_at: string | null;
+}
+
 // ---------- requests / responses ----------
+
+/**
+ * Every agent-route success response also carries `inbox`: this agent's unread messages
+ * (oldest first), which are marked read by that response. Error responses carry none.
+ */
+export type WithInbox<T> = T & { inbox?: Message[] };
+
+/** Exactly one of to_agent (agent id or name) or to_task. */
+export interface SendMessageRequest { to_agent?: string; to_task?: string; text: string }
+export interface SendMessageResponse { message_id: string; to_agent: string; to_name: string }
 
 export interface JoinRequest {
   code: string;

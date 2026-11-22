@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
 import { requireAgent } from "@/lib/server/auth";
 import { col } from "@/lib/server/firebase-admin";
 import { handle, readBody, str } from "@/lib/server/http";
+import { agentJson } from "@/lib/server/messages";
 import { ACTIVE, addEvent, leaseFrom, mutateOwnTask, parseTaskId } from "@/lib/server/tasks";
 
 // POST /api/tasks/:id/progress { attempt_id, message }: -> in_progress, renew lease, log progress.
@@ -17,5 +17,5 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
     addEvent(tx, { type: "progress", task_id: id, agent_id: agent.id, mission_id: task.mission_id ?? null, message }, now);
     return { status: "in_progress", lease_expires_at: leaseFrom(now) };
   });
-  return NextResponse.json({ ok: true });
+  return agentJson(agent.id, { ok: true });
 });

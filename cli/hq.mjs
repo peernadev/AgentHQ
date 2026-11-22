@@ -26,6 +26,9 @@ const USAGE = `Usage: hq <command>
                                attaches the last ${LOG_LINES} lines of the failing check
   status [--json]
   tasks add plan.json          orchestrator: { mission_id?, tasks: [...] } or [...]
+  msg <agent|task> "text"      message an agent (id or name) or a task's current agent
+  inbox                        show unread messages (also a heartbeat)
+Every call prints new messages to stderr, starting with "MESSAGE from <agent>".
 Server: $HQ_URL (default ${DEFAULT_URL}). Config: ./${CONFIG}`;
 
 class CliError extends Error {}
@@ -74,7 +77,16 @@ async function api(cfg, method, path, body, { auth = true } = {}) {
     err.status = res.status;
     throw err;
   }
+  printInbox(data?.inbox);
   return data;
+}
+
+/** Messages are marked read once delivered, so always show them (stderr keeps stdout parseable). */
+function printInbox(inbox) {
+  for (const m of inbox ?? []) {
+    const task = m.to_task ? ` (about task ${m.to_task})` : "";
+    process.stderr.write(`MESSAGE from ${m.from_name}${task} at ${m.created_at}:\n  ${m.text.replace(/\n/g, "\n  ")}\n`);
+  }
 }
 
 /** Dies unless .hq.json holds the claim (and so the attempt_id) for this task. */
@@ -239,6 +251,33 @@ const commands = {
     console.log(cfg.current
       ? `Task:    ${cfg.current.title} (${cfg.current.task_id}), claimed ${cfg.current.claimed_at ?? "?"}`
       : "Task:    none");
+  },
+
+  async msg(argv) {
+    const [target, ...rest] = argv;
+    const text = rest.join(" ").trim();
+    if (!target || !text) die('Usage: hq msg <agent|task> "text"');
+    const cfg = loadConfig();
+    // Agents first (id or name); a 404 means nothing was sent, so retry as a task id.
+    let res;
+    try {
+      res = await api(cfg, "POST", "/api/messages", { to_agent: target, text });
+    } catch (err) {
+      if (err.status !== 404) throw err;
+      try {
+        res = await api(cfg, "POST", "/api/messages", { to_task: target, text });
+      } catch (err2) {
+        // 400 = not even a valid task id (e.g. a misspelled agent name with spaces).
+        if (err2.status === 404 || err2.status === 400) die(`No agent or task "${target}"`);
+        throw err2;
+      }
+    }
+    console.log(`Sent to ${res.to_name}.`);
+  },
+
+  async inbox() {
+    const res = await api(loadConfig(), "GET", "/api/messages");
+    if (!res?.inbox?.length) console.log("No new messages.");
   },
 
   async tasks(argv) {

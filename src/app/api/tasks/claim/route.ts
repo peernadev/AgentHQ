@@ -1,9 +1,9 @@
-import { NextResponse } from "next/server";
 import type { ClaimResponse } from "@/types/api";
 import { requireAgent } from "@/lib/server/auth";
 import { sinceLastClaim } from "@/lib/server/briefing";
 import { claimNextTask } from "@/lib/server/claim";
 import { HttpError, handle } from "@/lib/server/http";
+import { agentJson } from "@/lib/server/messages";
 
 // POST /api/tasks/claim: atomically claim the best available task (SPEC §6).
 // The returned task includes attempt_id; send it with every later call about this task.
@@ -18,5 +18,5 @@ export const POST = handle(async (req: Request) => {
       return [];
     });
   }
-  return NextResponse.json<ClaimResponse>(res);
+  return agentJson<ClaimResponse>(agent.id, res);
 });

@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
 import type { CheckResults } from "@/types/api";
 import { requireAgent } from "@/lib/server/auth";
 import { col } from "@/lib/server/firebase-admin";
 import { HttpError, handle, optStr, readBody, str } from "@/lib/server/http";
+import { agentJson } from "@/lib/server/messages";
 import { ACTIVE, addEvent, mutateOwnTask, parseTaskId } from "@/lib/server/tasks";
 
 function parseChecks(v: unknown): CheckResults {
@@ -41,5 +41,5 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
       lease_expires_at: null,
     };
   });
-  return NextResponse.json({ ok: true });
+  return agentJson(agent.id, { ok: true });
 });

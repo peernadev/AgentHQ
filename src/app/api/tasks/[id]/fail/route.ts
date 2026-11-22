@@ -1,9 +1,9 @@
-import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { TASK_POINTS, type TaskSize } from "@/types/api";
 import { requireAgent } from "@/lib/server/auth";
 import { col } from "@/lib/server/firebase-admin";
 import { handle, optStr, readBody, str } from "@/lib/server/http";
+import { agentJson } from "@/lib/server/messages";
 import { ACTIVE, addEvent, mutateOwnTask, parseTaskId } from "@/lib/server/tasks";
 
 // POST /api/tasks/:id/fail { attempt_id, reason, log_excerpt? }: claimed/in_progress -> failed.
@@ -28,5 +28,5 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
     }, now);
     return { status: "failed", lease_expires_at: null };
   });
-  return NextResponse.json({ ok: true });
+  return agentJson(agent.id, { ok: true });
 });
