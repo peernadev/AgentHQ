@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowDown, ArrowRight, ArrowUp, Check, ChevronRight, Code2, Minus, Plus, RotateCcw, Server, ShieldCheck, X } from "lucide-react";
 import { AgentHQMark } from "@/components/agenthq-mark";
 import { MissionCreator } from "@/components/mission-creator";
-import { useMissionData } from "@/lib/client/use-mission-data";
+import { useMockMissionData as useMissionData } from "@/lib/mocks/use-mock-mission-data";
 import type { Agent, Task } from "@/types/api";
 import styles from "./agent-network-dashboard.module.css";
 
