@@ -26,6 +26,36 @@ export function checkRealPaths(tasks: PlanTask[], files: string[]): string[] {
   return errors;
 }
 
+export const MIN_PLAN_TASKS = 5;
+export const MIN_FOLDER_SEGMENTS = 3;
+
+/** A feature-sized goal needs a real breakdown, not 2-3 giant tasks. */
+export function checkTaskCount(tasks: PlanTask[], min = MIN_PLAN_TASKS): string[] {
+  return tasks.length >= min ? [] : [
+    `The plan has ${tasks.length} tasks; it needs at least ${min}. Split the work: a contract task first, then UI and API tasks in parallel, then integration.`,
+  ];
+}
+
+/**
+ * Narrow scopes: a folder must be at least 3 path segments deep (src/components/leaderboard/,
+ * not src/components/). Files can be at any depth (package.json, src/types/api.ts). A scope is a
+ * folder if it ends with "/" or names a folder in the repo tree (a bare "src/components" counts).
+ */
+export function checkNarrowScopes(tasks: PlanTask[], files: string[], min = MIN_FOLDER_SEGMENTS): string[] {
+  const errors: string[] = [];
+  for (const t of tasks) {
+    for (const s of t.scope) {
+      const bare = s.replace(/\/+$/, "");
+      const isFolder = s.endsWith("/") || files.some((f) => f.startsWith(bare + "/"));
+      const depth = bare.split("/").filter(Boolean).length;
+      if (isFolder && depth < min) {
+        errors.push(`"${t.title}": scope "${s}" is too broad (a whole ${depth}-segment folder). Use a feature folder at least ${min} segments deep, like "src/components/<feature>/", or specific files.`);
+      }
+    }
+  }
+  return errors;
+}
+
 /** Parallel scopes: two tasks in the batch with overlapping scopes must be ordered by a depends_on chain. */
 export function checkParallelOverlap(tasks: PlanTask[]): string[] {
   const byId = new Map(tasks.map((t) => [t.id, t]));
