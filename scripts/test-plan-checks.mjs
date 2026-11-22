@@ -27,6 +27,16 @@ ok("folder with only .gitkeep", () => assert.deepEqual(checkRealPaths([t("a", ["
 ok("invented top-level folder rejected", () => assert.equal(checkRealPaths([t("a", ["frontend/"])], files).length, 1));
 ok("invented nested parent rejected", () => assert.equal(checkRealPaths([t("a", ["src/features/auth/"])], files).length, 1));
 ok("prefix trick 'src/comp' is not a folder", () => assert.equal(checkRealPaths([t("a", ["src/comp/x/"])], files).length, 1));
+ok("new file in a new feature folder: accepted (src/app/api/signup/route.ts)", () => assert.deepEqual(
+  checkRealPaths([t("a", ["src/app/api/signup/route.ts"])], [...files, "src/app/api/health/route.ts"]), []));
+ok("new file in a new component folder: accepted (src/components/landing/hero.tsx)", () => assert.deepEqual(
+  checkRealPaths([t("a", ["src/components/landing/hero.tsx"])], files), []));
+ok("new file two new folders deep: rejected (src/features/auth/x.tsx)", () => assert.equal(
+  checkRealPaths([t("a", ["src/features/auth/x.tsx"])], files).length, 1));
+ok("new folder two levels deep: rejected (src/components/a/b/)", () => assert.equal(
+  checkRealPaths([t("a", ["src/components/a/b/"])], files).length, 1));
+ok("new file in a new top-level folder: rejected (web/page.tsx)", () => assert.equal(
+  checkRealPaths([t("a", ["web/page.tsx"])], files).length, 1));
 
 // parallel overlap
 ok("disjoint scopes in parallel: fine", () => assert.deepEqual(checkParallelOverlap([t("a", ["src/a/"]), t("b", ["src/b/"])]), []));
