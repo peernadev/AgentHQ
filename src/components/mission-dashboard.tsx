@@ -1,147 +1,169 @@
 "use client";
 
-import { ArrowDown, ArrowUp, ArrowUpRight, Check, ChevronRight, Circle, Clock3, GitPullRequest, Layers3, Loader2, Radio, RotateCcw, ShieldCheck, Sparkles, Terminal, Users } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowDown, ArrowUp, ArrowUpRight, Check, ChevronDown, Eye, FileText, HelpCircle, Loader2, Plus, RotateCcw, X } from "lucide-react";
+import { AgentHQMark } from "@/components/agenthq-mark";
+import { MissionCreator } from "@/components/mission-creator";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useMissionData } from "@/lib/client/use-mission-data";
 import { taskPoints } from "@/lib/mocks/mission";
-import type { AgentStatus, TaskStatus } from "@/types/api";
+import type { AgentStatus, MissionStatus, Task, TaskStatus } from "@/types/api";
+import styles from "@/components/mission-dashboard.module.css";
 
-const statusStyles: Record<AgentStatus | TaskStatus, string> = {
-  working: "bg-emerald-100 text-emerald-950", idle: "bg-blue-100 text-blue-950",
-  blocked: "bg-amber-100 text-amber-950", offline: "bg-zinc-200 text-zinc-800",
-  draft: "bg-muted text-foreground", queued: "bg-blue-100 text-blue-950",
-  claimed: "bg-amber-100 text-amber-950", in_progress: "bg-emerald-100 text-emerald-950",
-  in_review: "bg-violet-100 text-violet-950", done: "bg-emerald-100 text-emerald-950",
-  failed: "bg-red-100 text-red-950", cancelled: "bg-muted text-foreground",
-};
+type View = "attention" | "tasks" | "team" | "activity";
 const statusLabels: Record<AgentStatus | TaskStatus, string> = {
   working: "Working", idle: "Idle", blocked: "Blocked", offline: "Offline", draft: "Draft", queued: "Queued",
-  claimed: "Claimed", in_progress: "In progress", in_review: "In review", done: "Done", failed: "Failed", cancelled: "Cancelled",
+  claimed: "Claimed", in_progress: "Working", in_review: "In review", done: "Done", failed: "Failed", cancelled: "Cancelled",
 };
-const personStyles = [
-  { avatar: "bg-indigo-100 text-indigo-950", bar: "bg-indigo-600" },
-  { avatar: "bg-teal-100 text-teal-950", bar: "bg-teal-700" },
-  { avatar: "bg-amber-100 text-amber-950", bar: "bg-amber-600" },
-];
-function Status({ status }: { status: AgentStatus | TaskStatus }) {
-  return <span className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-sm font-semibold ${statusStyles[status]}`}><Circle className="size-2 fill-current" aria-hidden="true" />{statusLabels[status]}</span>;
-}
+const missionLabels: Record<MissionStatus, string> = { planning: "Planning", awaiting_approval: "Awaiting approval", running: "Running", reviewing: "Reviewing", done: "Done" };
 function age(iso: string, now: number) {
-  if (!now) return "…";
+  if (!now) return "Awaiting clock";
   const seconds = Math.max(0, Math.floor((now - new Date(iso).getTime()) / 1000));
   return seconds < 60 ? `${seconds}s ago` : `${Math.floor(seconds / 60)}m ago`;
 }
 
+function Coordination() {
+  return <details className={styles.coordination}>
+    <summary>How work is coordinated</summary>
+    <ol>
+      <li><strong>A human requests a plan.</strong> The server-side Gemini planner turns the mission brief into structured JSON. The server validates file scopes, dependencies and task shape before saving drafts. Humans review and approve the plan.</li>
+      <li><strong>The server dispatches work deterministically.</strong> A claim transaction considers queue priority, dependencies, scope locks, workload fairness and leases. The planner does not directly assign work to laptops.</li>
+      <li><strong>Workers pull work through the hq CLI.</strong> Humans launch workers on their own laptops. Each worker claims and reports through the server with its attempt ID; workers do not connect directly to other laptops.</li>
+      <li><strong>Humans review and merge.</strong> A task keeps its scope while its PR is in review. Passing checks and a human merge remain required. The Phase 2 reviewer is bound to a head SHA; recovery proposes new drafts for approval.</li>
+    </ol>
+    <p>This screen currently uses a local mock adapter. Planning, approval and queue changes do not call Gemini, dispatch workers or write to a live service.</p>
+  </details>;
+}
+
 export function MissionDashboard() {
   const board = useMissionData();
-  const { tasks, agents, selectedTask: task } = board;
-  const done = tasks.filter(item => item.status === "done").length;
-  const review = task?.review;
-  const checks = task?.checks ? [{ name: "TypeScript", passed: task.checks.typecheck }, { name: "Lint", passed: task.checks.lint }, { name: "Build", passed: task.checks.build }] : [];
-  const average = board.workload.reduce((sum, person) => sum + person.points, 0) / board.workload.length;
-  // Native meters share a scale, so both bars and the average describe the same points.
-  const scale = Math.max(6, ...board.workload.map(person => person.points));
-  const events = board.events.filter(event => event.mission_id === board.mission.id || (event.mission_id === null && event.task_id !== null && board.mission.taskIds.includes(event.task_id)));
-  function inspect(id: string) {
-    board.selectTask(id);
-    if (window.matchMedia("(max-width: 1439px)").matches) {
-      document.getElementById("task-inspector")?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" });
-      document.getElementById("task-inspector")?.focus({ preventScroll: true });
-    }
+  const [view, setView] = useState<View>("attention");
+  const [navOpen, setNavOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [inspectedId, setInspectedId] = useState<string | null>(null);
+  const [expiryDecisions, setExpiryDecisions] = useState<Record<string, string>>({});
+  const [localAnnouncement, setLocalAnnouncement] = useState("");
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const inspectorRef = useRef<HTMLDivElement>(null);
+  const originRef = useRef<HTMLButtonElement | null>(null);
+  const { tasks, agents } = board;
+  const reviews = tasks.filter(task => task.status === "in_review");
+  const blocked = agents.filter(agent => agent.status === "blocked");
+  const waitingBlocked = blocked.filter(agent => !expiryDecisions[agent.id]);
+  const attentionCount = reviews.length + waitingBlocked.length;
+  const acting = board.approving || board.planning;
+  const average = board.workload.length ? board.workload.reduce((sum, person) => sum + person.points, 0) / board.workload.length : 0;
+  const scale = Math.max(1, ...board.workload.map(person => person.points));
+  const events = board.events.filter(event => event.mission_id === board.mission.id || (event.mission_id === null && event.task_id !== null && tasks.some(task => task.id === event.task_id)));
+  useEffect(() => {
+    if (!inspectedId) return;
+    inspectorRef.current?.focus({ preventScroll: true });
+    inspectorRef.current?.scrollIntoView({ block: "nearest", behavior: "auto" });
+  }, [inspectedId, view]);
+  function focusHeading() { requestAnimationFrame(() => headingRef.current?.focus({ preventScroll: true })); }
+  function closeInspector() {
+    setInspectedId(null);
+    requestAnimationFrame(() => {
+      const origin = originRef.current;
+      if (origin?.isConnected && origin.getClientRects().length > 0 && !origin.closest("[hidden], [inert], [aria-hidden=true]") && getComputedStyle(origin).visibility !== "hidden") origin.focus({ preventScroll: true });
+      else headingRef.current?.focus({ preventScroll: true });
+    });
   }
-  return (
-    <main className="min-h-screen [font-family:var(--font-geist-sans),ui-sans-serif,system-ui,sans-serif] [&_code]:[font-family:inherit] bg-muted/35 text-foreground selection:bg-primary selection:text-primary-foreground">
-      <header className="border-b bg-background px-4 py-4 sm:px-6">
-        <div className="mx-auto flex max-w-[1800px] flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3"><div className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground"><Layers3 className="size-6" aria-hidden="true" /></div><div><p className="text-xl font-bold tracking-tight">AgentHQ</p><p className="text-sm text-foreground/70">One team. Every agent in view.</p></div></div>
-          <div className="flex flex-wrap items-center gap-3"><span className="flex items-center gap-2 rounded-md bg-amber-100 px-3 py-2 text-sm font-semibold text-amber-950"><Radio className="size-4" aria-hidden="true" />Mock mode</span><Button variant="outline" className="h-10 px-3" onClick={board.reset} disabled={board.approving}><RotateCcw />Reset demo</Button></div>
-        </div>
-      </header>
-      <div className="mx-auto grid max-w-[1800px] gap-6 p-4 sm:p-6 lg:grid-cols-[200px_minmax(0,1fr)]">
-        <aside aria-label="Missions" className="min-w-0">
-          <div className="mb-4 flex items-center gap-2 text-base font-semibold"><Layers3 className="size-5" />Missions <span className="ml-auto text-sm text-foreground/65">{board.missions.length}</span></div>
-          <nav className="flex gap-2 overflow-x-auto pb-2 lg:flex-col lg:overflow-visible">
-            {board.missions.map(mission => <button key={mission.id} onClick={() => board.selectMission(mission.id)} disabled={board.approving} aria-current={mission.id === board.mission.id ? "page" : undefined} className={`min-w-44 rounded-xl border p-4 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50 ${mission.id === board.mission.id ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background hover:bg-muted"}`}><span className="block text-base font-semibold">{mission.title}</span><span className={`mt-3 block text-sm ${mission.id === board.mission.id ? "text-primary-foreground/85" : "text-foreground/65"}`}>{mission.taskIds.length} tasks <ChevronRight className="ml-1 inline size-4" /></span></button>)}
-          </nav>
-          <div className="mt-6 hidden border-t pt-5 text-sm leading-relaxed text-foreground/70 lg:block"><ShieldCheck className="mb-2 size-5" /><p>Scoped work.<br />Shared visibility.</p><p className="mt-3">Sample data only. Changes stay in this browser session.</p></div>
-        </aside>
-
-        <div className="min-w-0">
-          <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-            <div><h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{board.mission.title}</h1><p className="mt-2 max-w-prose text-base text-foreground/70">{board.mission.goal}</p></div>
-            <div className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-sm"><Check className="size-4 text-emerald-700" /><span><strong>{done} / {tasks.length}</strong> tasks done</span></div>
-          </div>
-
-          <div className="grid items-start gap-6 min-[1440px]:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
-            <div className="min-w-0 space-y-6">
-              <section aria-labelledby="workers-heading">
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-2"><h2 id="workers-heading" className="flex items-center gap-2 text-xl font-semibold"><Users className="size-5" />Worker board</h2><p className="text-sm text-foreground/70">{agents.filter(agent => agent.status !== "offline").length} online · {agents.filter(agent => agent.status === "working").length} working</p></div>
-                {agents.length ? <div className="grid gap-4 lg:grid-cols-3">
-                  {board.participants.map((person, index) => <section key={person.id} aria-label={`${person.name}’s agents`} className="min-w-0">
-                    <h3 className="mb-3 flex items-center gap-2 font-semibold"><span className={`flex size-8 items-center justify-center rounded-full text-sm ${personStyles[index].avatar}`}>{person.name[0]}</span>{person.name}<span className="ml-auto text-sm font-normal text-foreground/65">{agents.filter(agent => agent.participant_id === person.id).length} agents</span></h3>
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">{agents.filter(agent => agent.participant_id === person.id).map(agent => {
-                      const currentTask = tasks.find(item => item.id === agent.current_task_id);
-                      const heldScopes = board.scopeLocks[agent.id] ?? [];
-                      return <Card key={agent.id} className={`gap-3 ${agent.status === "offline" ? "bg-muted/70" : ""}`}>
-                        <CardContent className="space-y-3">
-                          <div className="flex flex-wrap items-center justify-between gap-2"><span className="break-all text-base font-semibold">{agent.name}</span><Status status={agent.status} /></div>
-                          <p className="flex items-center gap-1.5 text-sm text-foreground/70"><Terminal className="size-4 shrink-0" />{agent.tool} · {agent.machine}</p>
-                          {currentTask ? <button onClick={() => inspect(currentTask.id)} className="block text-left text-base font-medium underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">{currentTask.title}<ArrowUpRight className="ml-1 inline size-4" /></button> : <p className="text-base font-medium">{agent.status === "offline" ? "Disconnected" : "Ready for a task"}</p>}
-                          <p className="min-h-10 text-sm leading-5 text-foreground/75">{agent.note}</p>
-                          <div className="border-t pt-3"><p className="mb-1 text-sm font-medium">{heldScopes.length ? "Scopes reserved until merge" : "Scope available"}</p>{heldScopes.length ? heldScopes.map(path => <code key={path} className="block break-all text-sm text-foreground/75">{path}</code>) : <p className="text-sm text-foreground/65">No active file lock</p>}</div>
-                          <p className="flex items-center gap-1.5 text-sm tabular-nums text-foreground/70"><Clock3 className="size-4" />Heartbeat {age(agent.last_heartbeat, board.now)}</p>
-                        </CardContent>
-                      </Card>;
-                    })}</div>
-                  </section>)}
-                </div> : <div className="rounded-xl border border-dashed bg-background p-6"><p className="mb-3 text-base">No workers assigned to this mission yet.</p><Button variant="outline" onClick={() => board.selectMission("build")}>View active demo mission</Button></div>}
-              </section>
-
-              <section aria-labelledby="fairness-heading" className="rounded-xl border bg-background p-5">
-                <div className="flex flex-wrap justify-between gap-2"><h2 id="fairness-heading" className="text-xl font-semibold">Workload fairness</h2><span className="text-sm tabular-nums text-foreground/75">Team average <strong>{average.toFixed(1)} pts</strong></span></div>
-                <p className="mt-1 text-sm text-foreground/70">Active + completed work · S = 1, M = 2, L = 4 points</p>
-                <div className="mt-5 space-y-4">{board.workload.map((person, index) => <div key={person.id} className="grid grid-cols-[55px_minmax(0,1fr)_46px] items-center gap-3 text-sm"><span className="font-medium">{person.name}</span><div className="relative flex h-4 overflow-hidden rounded bg-muted" role="meter" aria-label={`${person.name} workload`} aria-valuenow={person.points} aria-valuemin={0} aria-valuemax={scale} aria-valuetext={`${person.points} points; team average ${average.toFixed(1)}`}>
-                  {Array.from({ length: scale }, (_, point) => <span key={point} className={`flex-1 ${point < person.points ? personStyles[index].bar : ""}`} />)}
-                  <svg className="pointer-events-none absolute inset-0 h-full w-full text-foreground" aria-hidden="true"><line x1={`${average / scale * 100}%`} x2={`${average / scale * 100}%`} y1="0" y2="100%" stroke="currentColor" strokeWidth="3" /></svg>
-                </div><span className="text-right font-semibold tabular-nums">{person.points} pts</span></div>)}</div>
-                <p className="mt-4 text-sm text-foreground/70">Vertical markers show the team average. Points stand in for effort; token usage is not tracked.</p>
-              </section>
-
-              <section aria-labelledby="queue-heading" className="rounded-xl border bg-background p-4 sm:p-5">
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 id="queue-heading" className="text-xl font-semibold">Task queue</h2><Button className="h-10 px-3" disabled={!board.drafts.length || board.approving} onClick={board.approveAll}>{board.approving ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <Check />}{board.approving ? "Approving…" : `Approve all (${board.drafts.length})`}</Button></div>
-                <Tabs defaultValue="up-next">
-                  <TabsList className="mb-3 h-auto! min-h-10 w-full flex-wrap gap-1" aria-label="Task views"><TabsTrigger value="up-next" className="px-3">Up next ({board.queue.length})</TabsTrigger><TabsTrigger value="drafts" className="px-3">Drafts ({board.drafts.length})</TabsTrigger><TabsTrigger value="finished" className="px-3">Review & done</TabsTrigger></TabsList>
-                  <TabsContent value="up-next"><ol className="divide-y">{board.queue.map((item, index) => <li key={item.id} className="flex items-start gap-3 py-4"><span className="pt-2 text-sm font-semibold tabular-nums text-foreground/60">{index + 1}</span><button onClick={() => inspect(item.id)} className="min-w-0 flex-1 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"><span className="text-base font-medium hover:underline">{item.title}</span><span className="mt-1 block break-all text-sm text-foreground/70">{item.scope.join(", ")} · {taskPoints[item.size]} pts</span>{item.depends_on.length > 0 && <span className="mt-1 block text-sm text-amber-900">Waiting for {tasks.find(t => t.id === item.depends_on[0])?.title ?? "dependency"}</span>}</button><div className="flex shrink-0 gap-1"><Button variant="outline" className="size-9" aria-label={`Move ${item.title} up`} disabled={index === 0} onClick={() => board.moveTask(item.id, -1)}><ArrowUp /></Button><Button variant="outline" className="size-9" aria-label={`Move ${item.title} down`} disabled={index === board.queue.length - 1} onClick={() => board.moveTask(item.id, 1)}><ArrowDown /></Button></div></li>)}</ol>{!board.queue.length && <p className="py-5 text-base text-foreground/70">Queue is empty. Approve drafts to add work.</p>}</TabsContent>
-                  <TabsContent value="drafts"><div className="divide-y">{board.drafts.map(item => <button key={item.id} onClick={() => inspect(item.id)} className="flex w-full items-center justify-between gap-3 py-4 text-left focus-visible:outline-2 focus-visible:outline-primary"><span><span className="block text-base font-medium">{item.title}</span><code className="mt-1 block break-all text-sm text-foreground/70">{item.scope[0]}</code></span><span className="shrink-0 text-sm">{taskPoints[item.size]} pts</span></button>)}</div>{!board.drafts.length && <div className="py-5"><p className="mb-3 text-base text-foreground/70">All drafts approved. The queue is ready.</p><Button variant="outline" onClick={board.reset}>Reset demo drafts</Button></div>}</TabsContent>
-                  <TabsContent value="finished"><div className="divide-y">{tasks.filter(item => ["in_review", "done"].includes(item.status)).map(item => <button key={item.id} onClick={() => inspect(item.id)} className="flex w-full flex-wrap items-center justify-between gap-3 py-4 text-left focus-visible:outline-2 focus-visible:outline-primary"><span className="text-base font-medium">{item.title}</span><Status status={item.status} /></button>)}</div>{!tasks.some(item => ["in_review", "done"].includes(item.status)) && <div className="py-5"><p className="mb-3 text-base text-foreground/70">No completed work here yet.</p><Button variant="outline" onClick={() => board.selectMission("build")}>View sample review</Button></div>}</TabsContent>
-                </Tabs>
-                <p className="mt-3 border-t pt-3 text-sm text-foreground/65">Priority runs top to bottom. Approval and ordering are local mock actions.</p>
-              </section>
-            </div>
-
-            <aside id="task-inspector" tabIndex={-1} aria-labelledby="inspector-heading" className="min-w-0 scroll-mt-5 rounded-xl border bg-background p-5 focus-visible:outline-2 focus-visible:outline-primary min-[1440px]:sticky min-[1440px]:top-6">
-              <div className="mb-5 flex items-center justify-between gap-3"><h2 id="inspector-heading" className="text-xl font-semibold">Task inspector</h2>{task && <Status status={task.status} />}</div>
-              {task ? <div className="space-y-6">
-                <div><p className="mb-2 text-sm tabular-nums text-foreground/65">{task.id.toUpperCase()} · {task.size} / {taskPoints[task.size]} points</p><h3 className="text-2xl font-semibold leading-tight tracking-tight">{task.title}</h3><p className="mt-3 text-base leading-relaxed text-foreground/75">{task.description}</p></div>
-                <div><h4 className="mb-2 font-semibold">Acceptance criteria</h4><p className="text-base leading-relaxed text-foreground/75">{task.acceptance || "No acceptance criteria supplied."}</p></div>
-                <div><h4 className="mb-2 flex items-center gap-2 font-semibold"><ShieldCheck className="size-4" />File scope</h4>{task.scope.map(path => <code key={path} className="block break-all rounded-md bg-muted px-3 py-2 text-sm">{path}</code>)}<p className="mt-2 text-sm text-foreground/70">{["claimed", "in_progress", "in_review"].includes(task.status) ? "Reserved until this task is complete." : "No active scope reservation."}</p></div>
-                {task.depends_on.length > 0 && <div><h4 className="mb-2 font-semibold">Dependencies</h4>{task.depends_on.map(id => <button key={id} className="block text-left text-sm underline underline-offset-4" onClick={() => board.selectTask(id)}>{tasks.find(item => item.id === id)?.title ?? id}</button>)}</div>}
-                <div className="border-t pt-5"><h4 className="mb-3 flex items-center gap-2 font-semibold"><GitPullRequest className="size-4" />Pull request</h4>{task.pr_url ? <><p className="mb-2 text-sm text-foreground/70">Mock PR · opens the repository PR list</p><a href={task.pr_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium underline underline-offset-4">Open repository pull requests<ArrowUpRight className="size-4" /></a><p className="mt-2 break-all text-sm text-foreground/70">{task.branch}</p><p className="mt-3 text-sm leading-relaxed text-foreground/75">{task.result_summary}</p></> : <p className="text-sm text-foreground/70">No pull request opened yet.</p>}</div>
-                <div><h4 className="mb-3 font-semibold">PR checks <span className="font-normal text-foreground/65">· mock</span></h4>{checks.length ? <ul className="space-y-2">{checks.map(check => <li key={check.name} className="flex items-center justify-between gap-2 text-sm"><span>{check.name}</span><span className={`flex items-center gap-1.5 font-medium ${check.passed ? "text-emerald-800" : "text-amber-900"}`}>{check.passed ? <Check className="size-4" /> : <Clock3 className="size-4" />}{check.passed ? "Passed" : "Failed"}</span></li>)}</ul> : <p className="text-sm text-foreground/70">Not reported. Checks appear when a sample PR is available.</p>}</div>
-                <div className="rounded-lg bg-violet-50 p-4 text-violet-950"><h4 className="mb-2 flex items-center gap-2 font-semibold"><Sparkles className="size-4" />Gemini review · mock</h4>{review && <p className="mb-2 text-sm font-semibold">{review.sha === task.head_sha ? review.verdict.replaceAll("_", " ") : "Stale review · SHA changed"} · <code>{review.sha}</code></p>}<p className="text-sm leading-relaxed">{review?.notes ?? "No sample review for this task yet."}</p><p className="mt-3 text-sm font-medium">Illustrative review. No AI service is connected. Passing checks and a human merge are still required.</p></div>
-              </div> : <p>Select a task to inspect its scope and review.</p>}
-            </aside>
-          </div>
-
-          <section aria-labelledby="timeline-heading" className="mt-6 rounded-xl border bg-background p-5">
-            <div className="mb-4 flex items-center justify-between gap-3"><h2 id="timeline-heading" className="text-xl font-semibold">Activity timeline</h2><span className="text-sm text-foreground/65">Mock events</span></div>
-            {events.length ? <ol className="divide-y">{events.map(event => <li key={event.id} className="flex items-start gap-3 py-3"><span className="mt-1 flex size-6 shrink-0 items-center justify-center rounded-full bg-muted"><Circle className="size-2 fill-current" /></span><div className="min-w-0 flex-1"><p className="text-base">{event.message}</p>{event.task_id && <button className="mt-1 text-sm font-medium underline underline-offset-4" onClick={() => inspect(event.task_id!)}>Inspect task</button>}</div><time dateTime={board.now ? event.created_at : undefined} className="shrink-0 pt-1 text-sm tabular-nums text-foreground/65">{age(event.created_at, board.now)}</time></li>)}</ol> : <div><p className="mb-3 text-base text-foreground/70">No activity yet. Approve the draft to start this mock mission.</p><Button variant="outline" disabled={board.approving || !board.drafts.length} onClick={board.approveAll}>Approve mission draft</Button></div>}
-          </section>
-          <p role="status" aria-live="polite" className="mt-4 min-h-6 text-sm font-medium">{board.announcement}</p>
-        </div>
-      </div>
-    </main>
-  );
+  function inspect(id: string, trigger?: HTMLButtonElement) {
+    if (trigger) originRef.current = trigger;
+    board.selectTask(id);
+    setInspectedId(id);
+  }
+  function switchMission(id: string) {
+    if (acting) return;
+    board.selectMission(id);
+    setView("attention"); setCreating(false); setInspectedId(null); setNavOpen(false); focusHeading();
+  }
+  function newMission() { setCreating(true); setInspectedId(null); setNavOpen(false); }
+  function reset() {
+    board.reset(); setExpiryDecisions({}); setLocalAnnouncement(""); setView("attention"); setCreating(false); setInspectedId(null); setNavOpen(false); focusHeading();
+  }
+  function dependencyNames(task: Task) { return task.depends_on.map(id => tasks.find(item => item.id === id)?.title ?? id).join(", "); }
+  function ownerName(task: Task) {
+    const agent = agents.find(item => item.id === task.agent_id);
+    return board.participants.find(person => person.id === agent?.participant_id)?.name ?? "Team";
+  }
+  function taskDetail(task: Task) {
+    if (inspectedId !== task.id) return null;
+    const agent = agents.find(item => item.id === task.agent_id);
+    const isBlocked = agent?.status === "blocked";
+    const held = ["claimed", "in_progress", "in_review"].includes(task.status);
+    const reviewIsCurrent = task.review && task.head_sha === task.review.sha;
+    const checks = task.checks ? [{ name: "Lint", passed: task.checks.lint }, { name: "TypeScript", passed: task.checks.typecheck }, { name: "Build", passed: task.checks.build }] : [];
+    return <div id={`task-detail-${task.id}`} className={styles.detail} ref={inspectorRef} tabIndex={-1} aria-labelledby={`detail-heading-${task.id}`}>
+      <div className={styles.detailHead}><h3 id={`detail-heading-${task.id}`}>{isBlocked ? "Invite expiry decision" : task.title}</h3><Button variant="ghost" className={styles.control} onClick={closeInspector} aria-label={`Close details for ${task.title}`}><X className="size-4" aria-hidden="true" /><span>Close</span></Button></div>
+      {isBlocked && <><p className={styles.blockerNote}>{ownerName(task)}’s {agent.name} needs an invite-expiry rule to continue. A local answer does not update the worker or endpoint.</p>{expiryDecisions[agent.id] ? <p>Recorded locally: {expiryDecisions[agent.id]}. The worker remains Blocked until an actual update.</p> : <form className={styles.expiryForm} onSubmit={event => {
+        event.preventDefault();
+        const expiry = String(new FormData(event.currentTarget).get("expiry") ?? "");
+        if (!["24 hours", "7 days", "30 days"].includes(expiry)) return;
+        setExpiryDecisions(current => ({ ...current, [agent.id]: expiry }));
+        setLocalAnnouncement(`Invite expiry recorded locally: ${expiry}. ${agent.name} remains Blocked; no worker or endpoint changed.`);
+        setInspectedId(null); focusHeading();
+      }}><label htmlFor={`invite-expiry-${agent.id}`}>Invite expiry</label><select id={`invite-expiry-${agent.id}`} name="expiry" required defaultValue=""><option value="" disabled>Choose a validity window</option><option value="24 hours">24 hours</option><option value="7 days">7 days</option><option value="30 days">30 days</option></select><Button type="submit" variant="outline" className={styles.control}>Record decision (mock)</Button><p className={styles.fine}>Saved in this page only. The worker remains Blocked until an actual update.</p></form>}</>}
+      <p>{task.description}</p>
+      {checks.length > 0 && <div className={styles.checks} aria-label="Reported checks">{checks.map(check => <span key={check.name} className={check.passed ? undefined : styles.failure}>{check.passed ? <Check aria-hidden="true" /> : <X aria-hidden="true" />}{check.name} {check.passed ? "passed" : "failed"}</span>)}</div>}
+      <dl className={styles.evidence}>
+        <div><dt>File scope</dt><dd>{task.scope.length ? task.scope.map(path => <code key={path}>{path}</code>) : "No scope supplied"}</dd></div>
+        <div><dt>Scope lock</dt><dd>{held ? task.status === "in_review" ? "Held until merge" : "Reserved for this task" : "No active reservation"}</dd></div>
+        <div><dt>Worker</dt><dd>{agent ? `${agent.name} · ${statusLabels[agent.status]}` : "Unassigned"}</dd></div>
+        <div><dt>Size</dt><dd>{task.size} · {taskPoints[task.size]} {taskPoints[task.size] === 1 ? "point" : "points"}</dd></div>
+        {task.head_sha && <div><dt>Head SHA</dt><dd><code>{task.head_sha}</code></dd></div>}
+        {agent && <div><dt>Heartbeat</dt><dd>{age(agent.last_heartbeat, board.now)}</dd></div>}
+        {task.lease_expires_at && <div><dt>Lease</dt><dd>{board.now ? new Date(task.lease_expires_at).getTime() > board.now ? "Active · 10-minute heartbeat renewal" : "Expired in this fixture" : "Awaiting clock"}</dd></div>}
+      </dl>
+      <h3>Acceptance criteria</h3><p>{task.acceptance || "No acceptance criteria supplied."}</p>
+      {task.depends_on.length > 0 && <><h3>Dependencies</h3><p>{dependencyNames(task)}</p></>}
+      {task.review && <div className={styles.reviewCopy}><h3>{reviewIsCurrent ? `Mock review · ${{ pass: "pass", revise: "revision requested", needs_human: "needs human" }[task.review.verdict]}` : "Mock review · outdated SHA"}</h3><p>{task.review.notes}</p><p className={styles.fine}>Review SHA <code>{task.review.sha}</code>{reviewIsCurrent ? " matches the displayed head." : " does not match the current head; this review is void."} A review never replaces passing checks or a human merge.</p></div>}
+      {task.pr_url && <div className={styles.reviewCopy}><h3>Mock pull request</h3><p className={styles.fine}>This fixture links to the repository PR list, not a numbered pull request.</p><a href={task.pr_url} target="_blank" rel="noreferrer">Open repository pull requests<ArrowUpRight aria-hidden="true" /></a>{task.branch && <p className={styles.fine}>Branch <code>{task.branch}</code></p>}</div>}
+      {task.created_by === "mock-planner" && <p className={styles.fine}>Local fixture plan. These file scopes are illustrative; no Gemini request was sent.</p>}
+    </div>;
+  }
+  function approvalButton() {
+    return <Button className={styles.control} onClick={board.approveAll} disabled={!board.drafts.length || acting} aria-busy={board.approving}>{board.approving && <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />}{board.approving ? "Approving…" : `Approve ${board.drafts.length} ${board.drafts.length === 1 ? "task" : "tasks"}`}</Button>;
+  }
+  function drafts() {
+    return <div className={styles.draftList}>{board.drafts.map(task => <details className={styles.draft} key={task.id}><summary><FileText aria-hidden="true" /><span>{task.title}</span><span className={styles.size}>{task.size}</span><ChevronDown className={styles.chevron} aria-hidden="true" /></summary><div className={styles.draftCopy}><p>{task.description}</p><p>File scope {task.scope.map(path => <code key={path}>{path}</code>)}</p><p>Done when: {task.acceptance || "No acceptance criteria supplied."}</p>{task.depends_on.length > 0 && <p>Waits for {dependencyNames(task)}.</p>}{task.created_by === "mock-planner" && <p>Local fixture draft; generated scopes are illustrative.</p>}</div></details>)}</div>;
+  }
+  return <div className={styles.workspace}>
+    <aside className={styles.sidebar} data-open={navOpen} aria-label="Workspace navigation">
+      <div className={styles.brandRow}><div className={styles.brand}><AgentHQMark aria-hidden="true" />AgentHQ</div><Button variant="outline" className={styles.menuButton} onClick={() => setNavOpen(open => !open)} aria-expanded={navOpen} aria-controls="mission-navigation">Missions<ChevronDown className="size-4" aria-hidden="true" /></Button></div>
+      <div className={styles.sideBody} id="mission-navigation"><p className={styles.navLabel}>Missions</p><nav className={styles.missionNav} aria-label="Missions">{board.missions.map(mission => <Button variant="ghost" className={styles.missionButton} key={mission.id} onClick={() => switchMission(mission.id)} disabled={acting} aria-current={!creating && mission.id === board.mission.id ? "page" : undefined}><FileText aria-hidden="true" /><span>{mission.title}</span></Button>)}</nav><Button variant="ghost" className={styles.newMission} onClick={newMission} disabled={acting}><Plus className="size-4" aria-hidden="true" />New mission</Button><div className={styles.sideFooter}><p>Local mock workspace<br />No live agents or AI calls.</p><Button variant="ghost" className={styles.resetButton} onClick={reset} disabled={acting}><RotateCcw className="size-4" aria-hidden="true" />Reset preview</Button></div></div>
+    </aside>
+    <main className={styles.main}><div className={styles.page}>
+      {creating ? <MissionCreator planning={board.planning} disabled={acting} error={board.planningError} onCancel={() => { setCreating(false); focusHeading(); }} onPlan={async input => { const response = await board.planMission(input); setCreating(false); setView("attention"); setInspectedId(null); focusHeading(); return response; }} /> : <>
+        <header className={styles.pageHeader}><div className={styles.titleLine}><h1 ref={headingRef} tabIndex={-1}>{board.mission.title}</h1><span className={styles.missionState}>{missionLabels[board.mission.status]}</span></div><p className={styles.goal}>{board.mission.goal}</p>{board.mission.plan_source === "cached_demo" && <p className={styles.hint}>Cached demo plan · not a live Gemini plan.</p>}</header>
+        <Tabs className={styles.viewTabs} value={view} onValueChange={value => { setView(String(value) as View); setInspectedId(null); }}>
+          <TabsList variant="line" className={styles.tabList} aria-label="Mission views"><TabsTrigger className={styles.tab} value="attention">Attention<span className={styles.count}>{attentionCount}</span></TabsTrigger><TabsTrigger className={styles.tab} value="tasks">Tasks<span className={styles.count}>{tasks.length}</span></TabsTrigger><TabsTrigger className={styles.tab} value="team">Team<span className={styles.count}>{agents.length}</span></TabsTrigger><TabsTrigger className={styles.tab} value="activity">Activity</TabsTrigger></TabsList>
+          <TabsContent value="attention">
+            {attentionCount ? <><h2>{attentionCount} {attentionCount === 1 ? "thing needs" : "things need"} your attention</h2><div className={styles.attentionList}>
+              {reviews.map(task => <article className={styles.attentionRow} key={task.id}><div className={styles.rowCopy}><Eye aria-hidden="true" /><div><h3>{task.title}</h3><p><span className={task.checks?.build === false ? styles.failure : undefined}>{task.checks?.build === false ? "Build failed" : "Review requested"}</span><span className={styles.separator}>·</span>{ownerName(task)} submitted the changes.</p></div></div><Button variant="outline" className={styles.control} onClick={event => inspectedId === task.id ? closeInspector() : inspect(task.id, event.currentTarget)} aria-expanded={inspectedId === task.id} aria-controls={inspectedId === task.id ? `task-detail-${task.id}` : undefined}>Review changes</Button>{taskDetail(task)}</article>)}
+              {waitingBlocked.map(agent => { const task = tasks.find(item => item.id === agent.current_task_id); const owner = board.participants.find(person => person.id === agent.participant_id)?.name ?? "A teammate"; return <article className={styles.attentionRow} key={agent.id}><div className={styles.rowCopy}><HelpCircle aria-hidden="true" /><div><h3>How long should an invite stay valid?</h3><p>{owner}’s <span className="text-foreground">{agent.name}</span> is blocked until you decide.</p></div></div>{task && <Button variant="outline" className={styles.control} onClick={event => inspectedId === task.id ? closeInspector() : inspect(task.id, event.currentTarget)} aria-expanded={inspectedId === task.id} aria-controls={inspectedId === task.id ? `task-detail-${task.id}` : undefined}>Unblock worker</Button>}{task && taskDetail(task)}</article>; })}
+            </div></> : <div className={styles.empty}><h2>No decisions waiting on you</h2><p>{board.drafts.length ? "Review the draft tasks below before they enter the queue." : "Open Tasks to see the queue, or start a new mission."}</p>{!board.drafts.length && <Button variant="outline" className={styles.control} onClick={newMission}>New mission</Button>}</div>}
+            {board.drafts.length > 0 ? <section className={styles.readiness}><div className={styles.sectionHead}><div><h2>{board.drafts.length} {board.drafts.length === 1 ? "draft ready" : "drafts ready"} for approval</h2><p>Adds these tasks to the queue.</p></div>{approvalButton()}</div>{drafts()}</section> : board.queue.length > 0 && <div className={styles.queueNote}><p>{board.queue.length} {board.queue.length === 1 ? "task is" : "tasks are"} queued. Local approval does not start workers.</p><Button variant="outline" className={styles.control} onClick={() => setView("tasks")}>View queue</Button></div>}
+            {blocked.some(agent => expiryDecisions[agent.id]) && <p className={styles.hint}>{blocked.filter(agent => expiryDecisions[agent.id]).map(agent => `${agent.name}: invite expiry recorded locally as ${expiryDecisions[agent.id]}. Worker remains Blocked.`).join(" ")}</p>}<p className={styles.belowNote}>Local mock. Approvals and ordering stay in this browser session. Reset preview restores the starting state.</p>
+          </TabsContent>
+          <TabsContent value="tasks">
+            {tasks.length === 0 && <div className={styles.empty}><h2>No tasks yet</h2><p>Start with a mission goal to create draft work.</p><Button variant="outline" className={styles.control} onClick={newMission}>New mission</Button></div>}
+            {([{ title: "Queued", items: board.queue }, { title: "Drafts", items: board.drafts }, { title: "In progress", items: tasks.filter(task => ["claimed", "in_progress"].includes(task.status)) }, { title: "In review", items: reviews }, { title: "Other outcomes", items: tasks.filter(task => ["done", "cancelled", "failed"].includes(task.status)) }]).filter(group => group.items.length).map(group => <section className={styles.taskSection} key={group.title}><div className={styles.sectionHead}><h2>{group.title} <span className={styles.count}>{group.items.length}</span></h2>{group.title === "Drafts" && approvalButton()}</div>{group.title === "Queued" && <p className={styles.hint}>Priority runs top to bottom. Ordering changes this local queue only.</p>}{group.items.map((task, index) => <article className={styles.taskRow} key={task.id}><div><button className={styles.taskTitle} onClick={event => inspectedId === task.id ? closeInspector() : inspect(task.id, event.currentTarget)} aria-expanded={inspectedId === task.id}>{group.title === "Queued" && <span className={styles.order}>{index + 1}</span>}{task.title}</button><p>{task.scope.join(", ")}</p>{task.depends_on.length > 0 && <p>Waits for {dependencyNames(task)}.</p>}</div>{group.title === "Queued" ? <div className={styles.reorder}><Button variant="ghost" className={styles.reorderButton} aria-label={`Move ${task.title} up`} disabled={index === 0 || acting} onClick={() => board.moveTask(task.id, -1)}><ArrowUp aria-hidden="true" /></Button><Button variant="ghost" className={styles.reorderButton} aria-label={`Move ${task.title} down`} disabled={index === group.items.length - 1 || acting} onClick={() => board.moveTask(task.id, 1)}><ArrowDown aria-hidden="true" /></Button></div> : <span className={styles.taskState}>{statusLabels[task.status]}</span>}{taskDetail(task)}</article>)}</section>)}
+          </TabsContent>
+          <TabsContent value="team">
+            {agents.length ? <><h2>Six workers, one shared mission</h2><p className={styles.intro}>{agents.filter(agent => agent.status === "working").length} working · {agents.filter(agent => agent.status === "idle").length} idle · {agents.filter(agent => agent.status === "blocked").length} blocked · {agents.filter(agent => agent.status === "offline").length} offline. Open a worker for its scope and note.</p>
+              {agents.map(agent => { const person = board.participants.find(person => person.id === agent.participant_id); const currentTask = tasks.find(task => task.id === agent.current_task_id); const heldScopes = board.scopeLocks[agent.id] ?? []; const reviewTask = tasks.find(task => task.agent_id === agent.id && task.status === "in_review"); return <details className={styles.worker} key={agent.id}><summary><span><span className={styles.workerName}>{agent.name}</span><span className={styles.owner}>{person?.name}</span></span><span className={agent.status === "blocked" ? styles.failure : styles.workerState}>{statusLabels[agent.status]}</span></summary><div className={styles.workerCopy}><p>{agent.note}</p>{expiryDecisions[agent.id] && <p>Invite expiry recorded locally: {expiryDecisions[agent.id]}. The worker remains Blocked until an actual update.</p>}<p>{agent.tool} · {agent.machine}</p><p>Heartbeat <span className={styles.numeric}>{age(agent.last_heartbeat, board.now)}</span></p>{heldScopes.length ? <><p>{reviewTask ? "Scope held until merge, even while this worker is idle." : "Scope reserved for the active task."}</p>{heldScopes.map(path => <code key={path}>{path}</code>)}</> : <p>No active file-scope lock.</p>}{(currentTask || reviewTask) && <Button variant="ghost" className={styles.control} onClick={event => { setView("tasks"); inspect((currentTask ?? reviewTask)!.id, event.currentTarget); }}>Inspect {currentTask?.title ?? reviewTask?.title}</Button>}</div></details>; })}
+              <details className={styles.workload}><summary>Workload balance</summary><div className={styles.balance}><p>Assigned work and completed tasks · S = 1, M = 2, L = 4 points. Points stand in for effort; token usage is not tracked.</p><p>Team average <strong className={styles.numeric}>{average.toFixed(1)} points</strong></p>{board.workload.map(person => <div className={styles.balanceRow} key={person.id}><span>{person.name}</span><div className={styles.bar} role="meter" aria-label={`${person.name} workload`} aria-valuemin={0} aria-valuemax={scale} aria-valuenow={person.points} aria-valuetext={`${person.points} points; team average ${average.toFixed(1)}`}><span className={styles.barFill} style={{ width: `${person.points / scale * 100}%` }} /><span className={styles.averageMarker} style={{ left: `${average / scale * 100}%` }} aria-hidden="true" /></div><b className={styles.numeric}>{person.points} pts</b></div>)}<p>Each vertical marker shows the same team average.</p></div></details>
+            </> : <div className={styles.empty}><h2>No workers on this mission</h2><p>This local mission has no associated workers. No agents connect from this preview.</p><Button variant="outline" className={styles.control} onClick={() => switchMission("build")}>View sample team</Button></div>}
+          </TabsContent>
+          <TabsContent value="activity"><h2>Mission activity</h2><p className={styles.intro}>Fixture history and changes made in this local preview.</p>{events.length ? events.map(event => { const task = event.task_id ? tasks.find(task => task.id === event.task_id) : undefined; const agent = event.agent_id ? agents.find(agent => agent.id === event.agent_id) : undefined; return <article className={styles.event} key={event.id}><div><p>{event.message ?? event.type.replaceAll("_", " ")}</p><small>{task ? task.title : "Mission event"} · {agent ? agent.name : task ? "No worker attributed" : "No worker or task"}</small>{task && <Button variant="ghost" className={`${styles.control} mt-2`} onClick={clickEvent => { setView("tasks"); inspect(task.id, clickEvent.currentTarget); }}>Inspect task</Button>}</div><time dateTime={event.created_at} className={styles.numeric}>{age(event.created_at, board.now)}</time></article>; }) : <div className={styles.empty}><p>No history for this mission yet.</p><Button variant="outline" className={styles.control} onClick={() => setView("attention")}>View attention</Button></div>}</TabsContent>
+        </Tabs>
+        <Coordination />
+      </>}
+    </div></main>
+    <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">{localAnnouncement}</div>
+    <div className={styles.announcement} role="status" aria-live="polite" aria-atomic="true">{board.announcement}</div>
+  </div>;
 }

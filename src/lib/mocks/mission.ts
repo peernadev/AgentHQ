@@ -1,16 +1,13 @@
 import { TASK_POINTS, type Agent, type HqEvent, type Mission, type Participant, type Task, type TaskSize, type TaskStatus } from "@/types/api";
 
-// Presentation-only metadata. Shared API rows stay unchanged until backend integration.
-export interface MockMission extends Mission {
-  taskIds: string[];
-  agentIds: string[];
-}
+// Fixture associations live outside shared API rows, including idle/offline workers.
+export const mockMissionAgents: Record<string, string[]> = { build: ["a1", "a2", "a3", "a4", "a5", "a6"] };
 export interface MissionSnapshot {
   participants: Participant[];
   agents: Agent[];
   tasks: Task[];
   events: HqEvent[];
-  missions: MockMission[];
+  missions: Mission[];
 }
 
 export const taskPoints = TASK_POINTS;
@@ -69,8 +66,8 @@ export function createMissionSnapshot(now = Date.now()): MissionSnapshot {
       agent("a6", "p3", "omer-worker-2", "offline", null, 192, "No heartbeat received"),
     ],
     missions: [
-      { id: "build", title: "Launch the team app", goal: "Build a landing page with signup and a leaderboard.", status: "running", source_doc_id: null, source_doc_url: null, plan_doc_url: null, handoff_doc_url: null, created_by: "mock-planner", created_at: ago(1800), taskIds: tasks.slice(0, 9).map(t => t.id), agentIds: ["a1", "a2", "a3", "a4", "a5", "a6"] },
-      { id: "launch", title: "Prepare for launch", goal: "Get the release checklist and team handoff ready.", status: "awaiting_approval", source_doc_id: null, source_doc_url: null, plan_doc_url: null, handoff_doc_url: null, created_by: "mock-planner", created_at: ago(1800), taskIds: ["t10", "t11"], agentIds: [] },
+      { id: "build", title: "Launch the team app", goal: "Build a landing page with signup and a leaderboard.", status: "running", source_doc_id: null, source_doc_url: null, plan_doc_url: null, handoff_doc_url: null, created_by: "mock-planner", created_at: ago(1800) },
+      { id: "launch", title: "Prepare for launch", goal: "Get the release checklist and team handoff ready.", status: "awaiting_approval", source_doc_id: null, source_doc_url: null, plan_doc_url: null, handoff_doc_url: null, created_by: "mock-planner", created_at: ago(1800) },
     ],
     events: [
       { id: "e4", mission_id: "build", task_id: "t4", agent_id: "a2", type: "pr_opened", message: "Eran opened a mock PR · landing page ready for review", data: null, created_at: ago(90) },

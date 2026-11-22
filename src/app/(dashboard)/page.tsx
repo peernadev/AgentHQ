@@ -3,23 +3,10 @@ import { MissionDashboard } from "@/components/mission-dashboard";
 import { Skeleton } from "@/components/ui/skeleton";
 
 function DashboardLoading() {
-  return (
-    <main aria-busy="true" aria-label="Loading mission control" className="min-h-screen [font-family:var(--font-geist-sans),ui-sans-serif,system-ui,sans-serif] bg-muted/35 p-4 sm:p-6">
-      <div className="mx-auto max-w-[1800px]">
-        <p role="status" className="mb-8 text-2xl font-semibold">Loading mission control…</p>
-        <div aria-hidden="true" className="grid gap-6 lg:grid-cols-[200px_minmax(0,1fr)]">
-          <Skeleton className="h-36 motion-reduce:animate-none" />
-          <div className="space-y-6">
-            <Skeleton className="h-20 motion-reduce:animate-none" />
-            <div className="grid gap-4 sm:grid-cols-3">
-              {[1, 2, 3].map(item => <Skeleton key={item} className="h-72 motion-reduce:animate-none" />)}
-            </div>
-            <Skeleton className="h-40 motion-reduce:animate-none" />
-          </div>
-        </div>
-      </div>
-    </main>
-  );
+  return <main aria-busy="true" aria-label="Loading mission workspace" className="min-h-screen bg-background text-foreground [font-family:var(--font-geist-sans),ui-sans-serif,system-ui,sans-serif] md:grid md:grid-cols-[240px_minmax(0,1fr)]">
+    <div aria-hidden="true" className="border-b bg-muted/60 p-6 md:min-h-screen md:border-r md:border-b-0"><Skeleton className="h-7 w-28 motion-reduce:animate-none" /><div className="mt-10 hidden space-y-3 md:block"><Skeleton className="h-7 w-full motion-reduce:animate-none" /><Skeleton className="h-7 w-3/4 motion-reduce:animate-none" /></div></div>
+    <div className="px-[18px] py-8 sm:px-12 md:py-16"><div className="mx-auto max-w-[920px]"><p role="status" className="text-2xl font-semibold tracking-tight">Loading your workspace…</p><div aria-hidden="true" className="mt-8 space-y-7"><Skeleton className="h-8 w-72 max-w-full motion-reduce:animate-none" /><Skeleton className="h-px w-full motion-reduce:animate-none" /><Skeleton className="h-14 w-full motion-reduce:animate-none" /><Skeleton className="h-14 w-full motion-reduce:animate-none" /></div></div></div>
+  </main>;
 }
 
 export default function DashboardPage() {
