@@ -105,8 +105,14 @@ which serializes claims (same role as the Postgres advisory lock).
   dependency cycles, real paths, non-overlapping parallel scopes. Tasks are saved as drafts.
 - **Reviewer:** input = task, head SHA, diff summary, check results. Output =
   pass | revise | needs_human + evidence. A review is void if the SHA changes. It never
-  replaces passing checks or a human merge.
+  replaces passing checks or a human merge. The diff comes from GitHub's public API (optional
+  read-only `GITHUB_TOKEN` only raises the rate limit); the PR head must equal the task's
+  head_sha. Rules before Gemini: a failed check is `revise` without a Gemini call; files
+  outside the task's scope can never be `pass`. The verdict doesn't change the task's status.
 - **Recovery:** input = failure reason/logs. Output = a smaller fix task or a prerequisite (draft).
+  Validated like planner tasks, plus: size ≤ the failed task's; a fix stays inside the failed
+  task's scope; a prerequisite doesn't overlap held locks. One pending draft per failed task.
+- All three share one model fallback chain (`google/gemini.ts`); all busy → 503.
 - Tools are bounded: read_selected_file, create_plan_doc, read_task_evidence,
   propose_task_revision, find_review_slots, create_confirmed_review_event. No shell, no
   arbitrary writes. Content from Docs/Drive can never authorize an action.
@@ -130,8 +136,8 @@ Every successful agent-route response also carries `inbox`: the agent's unread m
 | POST | /api/tasks/approve | { ids } | dashboard |
 | POST | /api/tasks/reorder | { ids } | dashboard |
 | POST | /api/missions | { title, goal, source_doc_id?, google_access_token? } → mission + drafts | dashboard |
-| POST | /api/missions/:id/review-task | { task_id } → Gemini review | dashboard |
-| POST | /api/missions/:id/recover | { task_id } → draft fix task | dashboard |
+| POST | /api/missions/:id/review-task | { task_id } → { review } (in_review tasks; stored on the task, bound to head_sha) | dashboard |
+| POST | /api/missions/:id/recover | { task_id } → { task_id, kind } (failed tasks; new draft) | dashboard |
 | POST | /api/missions/:id/handoff | { google_access_token } → handoff Doc URL | dashboard |
 Dashboard routes verify the Firebase ID token (`Authorization: Bearer <idToken>`) and
 that the email belongs to a participant.

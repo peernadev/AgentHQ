@@ -60,6 +60,8 @@ export interface TaskReview {
   notes: string;
   sha: string;          // review is void if the task's head_sha changes
   reviewed_at: string;
+  evidence?: string[];  // short, checkable claims (file, check, acceptance bullet)
+  model?: string;       // Gemini model that reviewed, or "rules" when decided without Gemini
 }
 
 export interface Task {
@@ -183,5 +185,12 @@ export interface CreateMissionResponse {
   task_ids: string[];
   cached_plan?: boolean;  // true: not a live Gemini plan (see Mission.plan_source); the UI must say so
 }
+
+export interface ReviewTaskRequest { task_id: string }
+export interface ReviewTaskResponse { review: TaskReview }
+
+export type RecoveryKind = "fix" | "prerequisite";
+export interface RecoverRequest { task_id: string }
+export interface RecoverResponse { task_id: string; kind: RecoveryKind }  // the new draft task
 
 export interface HealthResponse { ok: boolean }
