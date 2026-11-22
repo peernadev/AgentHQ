@@ -56,6 +56,15 @@ export function checkNarrowScopes(tasks: PlanTask[], files: string[], min = MIN_
   return errors;
 }
 
+const API_WORDS = /\b(api|apis|endpoints?|routes?)\b/i;
+
+/** Route location: a task whose title mentions an API, endpoint or route must edit something under src/app/api/. */
+export function checkApiRouteLocation(tasks: PlanTask[]): string[] {
+  return tasks
+    .filter((t) => API_WORDS.test(t.title) && !t.scope.some((s) => s.startsWith("src/app/api/")))
+    .map((t) => `"${t.title}" is API work but no scope is under src/app/api/. Put the route in src/app/api/<feature>/ (server logic can stay in src/lib/server/<feature>.ts as a second scope).`);
+}
+
 /** Parallel scopes: two tasks in the batch with overlapping scopes must be ordered by a depends_on chain. */
 export function checkParallelOverlap(tasks: PlanTask[]): string[] {
   const byId = new Map(tasks.map((t) => [t.id, t]));

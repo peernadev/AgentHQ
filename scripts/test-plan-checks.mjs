@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const { checkRealPaths, checkParallelOverlap, checkTaskCount, checkNarrowScopes } = await import(
+const { checkRealPaths, checkParallelOverlap, checkTaskCount, checkNarrowScopes, checkApiRouteLocation } = await import(
   pathToFileURL(path.join(root, "src/lib/server/google/plan-checks.ts")).href
 );
 
@@ -60,6 +60,23 @@ ok("only the broad scope of a task is reported", () => assert.equal(
   checkNarrowScopes([t("a", ["src/app/page.tsx", "src/components/"])], files).length, 1));
 ok("depth error names the scope and the fix", () => assert.match(
   checkNarrowScopes([t("a", ["src/components/"])], files)[0], /"src\/components\/" is too broad.*src\/components\/<feature>\//));
+
+// route location: API / endpoint / route work must have a scope under src/app/api/
+const titled = (title, scope) => ({ id: title, title, scope, depends_on: [] });
+ok("API task in src/lib/server/tasks.ts rejected (the Flash-Lite case)", () => assert.equal(
+  checkApiRouteLocation([titled("Extend tasks API for landing page endpoints", ["src/lib/server/tasks.ts"])]).length, 1));
+ok("'endpoint' in title, route scope: accepted", () => assert.deepEqual(
+  checkApiRouteLocation([titled("Implement leaderboard endpoint", ["src/app/api/leaderboard/"])]), []));
+ok("'route' in title, route file plus server logic: accepted", () => assert.deepEqual(
+  checkApiRouteLocation([titled("Add signup route", ["src/app/api/signup/route.ts", "src/lib/server/signup.ts"])]), []));
+ok("'Routes' / 'APIs' (plural, any case) detected", () => assert.equal(
+  checkApiRouteLocation([titled("Wire up Routes", ["src/components/x/"]), titled("Add APIs", ["src/lib/server/x.ts"])]).length, 2));
+ok("UI task without API words: not checked", () => assert.deepEqual(
+  checkApiRouteLocation([titled("Build leaderboard UI widget component", ["src/components/leaderboard/"])]), []));
+ok("word inside another word ('rapid', 'grapes') not matched", () => assert.deepEqual(
+  checkApiRouteLocation([titled("Rapid grapes prototype", ["src/components/x/"])]), []));
+ok("route-location error tells Gemini where to put it", () => assert.match(
+  checkApiRouteLocation([titled("Add API", ["src/lib/server/x.ts"])])[0], /src\/app\/api\/<feature>\//));
 
 console.log(`== ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
