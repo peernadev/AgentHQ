@@ -1,20 +1,21 @@
 import { NextResponse } from "next/server";
-import { getSupabaseAdmin } from "@/lib/server/supabase-admin";
 import { requireAgent } from "@/lib/server/auth";
-import { check, handle, readBody, str } from "@/lib/server/http";
-import { logEvent, parseTaskId, transitionOwnTask } from "@/lib/server/tasks";
+import { col } from "@/lib/server/firebase-admin";
+import { handle, readBody, str } from "@/lib/server/http";
+import { ACTIVE, addEvent, leaseFrom, mutateOwnTask, parseTaskId } from "@/lib/server/tasks";
 
-// POST /api/tasks/:id/progress { message }: claimed/in_progress -> in_progress, log a progress event.
+// POST /api/tasks/:id/progress { attempt_id, message }: -> in_progress, renew lease, log progress.
 export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
   const agent = await requireAgent(req);
   const id = parseTaskId((await ctx.params).id);
-  const message = str(await readBody(req), "message", { max: 500 });
+  const body = await readBody(req);
+  const attemptId = str(body, "attempt_id", { max: 64 });
+  const message = str(body, "message", { max: 500 });
 
-  await transitionOwnTask(agent, id, ["claimed", "in_progress"], { status: "in_progress" });
-  check(
-    await getSupabaseAdmin().from("agents").update({ status: "working", note: message }).eq("id", agent.id),
-    "agent note",
-  );
-  await logEvent({ type: "progress", task_id: id, agent_id: agent.id, message });
+  await mutateOwnTask(agent, id, attemptId, ACTIVE, (tx, task, now) => {
+    tx.update(col.agents().doc(agent.id), { status: "working", note: message });
+    addEvent(tx, { type: "progress", task_id: id, agent_id: agent.id, mission_id: task.mission_id ?? null, message }, now);
+    return { status: "in_progress", lease_expires_at: leaseFrom(now) };
+  });
   return NextResponse.json({ ok: true });
 });
