@@ -210,14 +210,5 @@ create policy "read events"       on events       for select to anon, authentica
 grant select on participants, agents, tasks, events, participant_workload to anon, authenticated;
 revoke all on agent_tokens from anon, authenticated;
 
--- ---------- server access (secret key = service_role) ----------
--- New Supabase projects don't grant service_role access to tables created here.
-grant select, insert, update, delete on participants, agents, agent_tokens, tasks, events to service_role;
-grant select on participant_workload to service_role;
-grant usage, select on all sequences in schema public to service_role;   -- events.id bigserial
-grant execute on function claim_next_task(uuid), release_stale_tasks() to service_role;
-alter default privileges in schema public grant select, insert, update, delete on tables to service_role;
-alter default privileges in schema public grant usage, select on sequences to service_role;
-
 -- ---------- realtime for the live dashboard ----------
 alter publication supabase_realtime add table participants, agents, tasks, events;
