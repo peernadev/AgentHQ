@@ -6,20 +6,30 @@ export interface PlanTask { id: string; title: string; scope: string[]; depends_
 const overlap = (a: string[], b: string[]) => a.some((x) => b.some((y) => x.startsWith(y) || y.startsWith(x)));
 
 /**
- * Real paths: a scope must exist in the repo tree, or be new inside a folder that exists.
- * New top-level folders are rejected (that's where invented paths usually show up).
+ * Real paths: a scope must exist in the repo tree, or be new at most one level below what exists:
+ * - a new folder inside an existing folder (src/components/leaderboard/);
+ * - a new file inside an existing folder (src/app/signup.tsx), or inside one new feature folder
+ *   in an existing folder (src/app/api/signup/route.ts), which is what the conventions ask for.
+ * Anything deeper, and new top-level folders, are rejected (that's where invented paths show up).
  */
 export function checkRealPaths(tasks: PlanTask[], files: string[]): string[] {
   const exists = (p: string) => {
     const dir = p.replace(/\/+$/, "");
     return files.includes(dir) || files.some((f) => f.startsWith(dir + "/"));
   };
+  const up = (p: string, n: number) => p.replace(/\/+$/, "").split("/").slice(0, -n).join("/");
   const errors: string[] = [];
   for (const t of tasks) {
     for (const s of t.scope) {
-      const parent = s.replace(/\/+$/, "").split("/").slice(0, -1).join("/");
-      if (!exists(s) && !(parent && exists(parent))) {
-        errors.push(`"${t.title}": scope "${s}" is not in the repo and its parent folder doesn't exist`);
+      if (exists(s)) continue;
+      const isFolder = s.endsWith("/");
+      const parent = up(s, 1);
+      const grandparent = up(s, 2);
+      const ok = (parent && exists(parent)) || (!isFolder && grandparent && exists(grandparent));
+      if (!ok) {
+        errors.push(isFolder
+          ? `"${t.title}": scope "${s}" is not in the repo and its parent folder doesn't exist`
+          : `"${t.title}": scope "${s}" is not in the repo, and neither its folder nor that folder's parent exists`);
       }
     }
   }
@@ -54,6 +64,15 @@ export function checkNarrowScopes(tasks: PlanTask[], files: string[], min = MIN_
     }
   }
   return errors;
+}
+
+const API_WORDS = /\b(api|apis|endpoints?|routes?)\b/i;
+
+/** Route location: a task whose title mentions an API, endpoint or route must edit something under src/app/api/. */
+export function checkApiRouteLocation(tasks: PlanTask[]): string[] {
+  return tasks
+    .filter((t) => API_WORDS.test(t.title) && !t.scope.some((s) => s.startsWith("src/app/api/")))
+    .map((t) => `"${t.title}" is API work but no scope is under src/app/api/. Put the route in src/app/api/<feature>/ (server logic can stay in src/lib/server/<feature>.ts as a second scope).`);
 }
 
 /** Parallel scopes: two tasks in the batch with overlapping scopes must be ordered by a depends_on chain. */
