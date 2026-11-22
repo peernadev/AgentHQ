@@ -219,7 +219,10 @@ Status words remain legible without color. Failures receive semantic red; other 
 
 ### Exploring
 
-- Five sparse network/map explorations inspired by the user's ControlAI and Shopify references are separate prototypes. They have not replaced option 01 or its production rules.
+- Five sparse network/map explorations inspired by the user's ControlAI and Shopify references remain unselected: Orbit, Relay, Constellation, Branches and Focus. They have not replaced option 01 or its production rules.
+- The runnable React preview is at /lab/network, implemented in src/app/(dashboard)/lab/network/page.tsx, src/components/agent-network-dashboard.tsx and src/components/agent-network-dashboard.module.css. It opens on Agents and supports worker/server selection, sections, local mock planning and approval, and zoom.
+- The standalone HTML reference gallery at .impeccable/mocks/decision/network-options.html and network-01.html through network-05.html is separate from the runnable React preview.
+- Prototype typography and radius differences remain advisory findings against Quiet workspace. Variant tokens are not approved system tokens; retain the canonical Quiet frontmatter and component previews.
 
 ### Rejected
 
