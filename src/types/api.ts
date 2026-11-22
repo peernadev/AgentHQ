@@ -116,7 +116,14 @@ export interface JoinRequest {
 }
 export interface JoinResponse { agent_id: string; participant_id: string; token: string }
 
-export interface ClaimResponse { task: Task | null; reason?: "no_task" | "fairness" }
+/** A task finished since the claiming agent's previous claim ("what changed" briefing). */
+export interface ChangeSummary { id: string; title: string; summary: string | null; completed_at: string }
+
+export interface ClaimResponse {
+  task: Task | null;
+  reason?: "no_task" | "fairness";
+  since_last_claim?: ChangeSummary[];   // only set when a task was claimed
+}
 
 export interface CreateTaskInput {
   key?: string;             // temp id so depends_on can reference tasks in the same batch
