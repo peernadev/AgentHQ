@@ -3,13 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "postinstall": "node scripts/gen-repo-context.mjs",
+    "predev": "node scripts/gen-repo-context.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/gen-repo-context.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
+    "@google/genai": "^3.6.1",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.119.2",
     "class-variance-authority": "^0.7.1",
