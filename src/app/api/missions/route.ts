@@ -3,10 +3,11 @@ import { NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
 import type { CreateMissionResponse, Mission } from "@/types/api";
 import { col, getDb } from "@/lib/server/firebase-admin";
-import { planMission, type QueueItem } from "@/lib/server/google/planner";
+import { cachedDemoPlan, planMission, PlannerBusyError, type QueueItem } from "@/lib/server/google/planner";
 import { handle, readBody, str } from "@/lib/server/http";
 import { toIso } from "@/lib/server/serialize";
-import { readDraftContext, writeDraftTasks } from "@/lib/server/tasks";
+import type { ParsedTask } from "@/lib/server/task-input";
+import { addEvent, readDraftContext, writeDraftTasks } from "@/lib/server/tasks";
 import { requireTeamUser } from "@/lib/server/team-auth";
 
 export const maxDuration = 60; // the Gemini call can take a while
@@ -32,22 +33,42 @@ export const POST = handle(async (req: Request) => {
   }));
 
   // External call: outside any transaction (AGENTS.md correctness rules).
-  const { tasks } = await planMission({ title, goal, queue, locks: registry.get("locks") ?? {} });
+  // If Gemini is busy and DEMO_FALLBACK=1, use the saved demo plan, always flagged as cached.
+  let tasks: ParsedTask[];
+  let cached: ReturnType<typeof cachedDemoPlan> = null;
+  try {
+    const plan = await planMission({ title, goal, queue, locks: registry.get("locks") ?? {} });
+    tasks = plan.tasks;
+    console.info(`planner: ${tasks.length} tasks from ${plan.model} (attempt ${plan.attempts})`);
+  } catch (e) {
+    cached = e instanceof PlannerBusyError ? cachedDemoPlan(queue) : null;
+    if (!cached) throw e;
+    tasks = cached.tasks;
+  }
 
   const missionId = randomUUID();
   const now = Timestamp.now();
   const mission = {
     title, goal, source_doc_id: null, source_doc_url: null, plan_doc_url: null, handoff_doc_url: null,
     status: "awaiting_approval", created_by: user.email, created_at: now,
+    plan_source: cached ? "cached_demo" : "gemini",
   };
   await getDb().runTransaction(async (tx) => {
     const ctx = await readDraftContext(tx, tasks);
     tx.create(col.missions().doc(missionId), mission);
     writeDraftTasks(tx, tasks, ctx, { missionId, createdBy: "gemini-planner", agentId: null }, now);
+    if (cached) {
+      addEvent(tx, {
+        type: "plan_cached", mission_id: missionId,
+        message: `Gemini was busy: showing the cached demo plan ("${cached.source.title}", captured ${cached.source.captured_at})`,
+        data: cached.source,
+      }, now);
+    }
   });
 
   return NextResponse.json<CreateMissionResponse>({
     mission: { id: missionId, ...(toIso(mission) as Omit<Mission, "id">) },
     task_ids: tasks.map((t) => t.id),
+    ...(cached ? { cached_plan: true } : {}),
   });
 });

@@ -49,6 +49,8 @@ export interface Mission {
   status: MissionStatus;
   created_by: string;
   created_at: string;
+  // "cached_demo": Gemini was busy and DEMO_FALLBACK=1, so the saved demo plan was used. Show it in the UI.
+  plan_source?: "gemini" | "cached_demo";
 }
 
 export interface CheckResults { lint: boolean; typecheck: boolean; build: boolean }
@@ -147,6 +149,10 @@ export interface CreateMissionRequest {
   source_doc_id?: string;
   google_access_token?: string;  // short-lived, used once, never stored
 }
-export interface CreateMissionResponse { mission: Mission; task_ids: string[] }
+export interface CreateMissionResponse {
+  mission: Mission;
+  task_ids: string[];
+  cached_plan?: boolean;  // true: not a live Gemini plan (see Mission.plan_source); the UI must say so
+}
 
 export interface HealthResponse { ok: boolean }
