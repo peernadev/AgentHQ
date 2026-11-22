@@ -39,9 +39,14 @@ walk("");
 const read = (f) => (existsSync(path.join(root, f)) ? readFileSync(path.join(root, f), "utf8").replace(/\r\n/g, "\n") : "");
 const ownership = read("AGENTS.md").match(/^## Ownership[^\n]*\n[\s\S]*?(?=^## )/m)?.[0].trim() ?? "";
 const plannerPrompt = read("prompts/planner.md").trim();
+const reviewerPrompt = read("prompts/reviewer.md").trim();
+const recoveryPrompt = read("prompts/recovery.md").trim();
 
 mkdirSync(path.join(root, path.dirname(OUT)), { recursive: true });
 writeFileSync(path.join(root, OUT), JSON.stringify({
   generated_at: new Date().toISOString(), truncated, files, ownership, planner_prompt: plannerPrompt,
+  reviewer_prompt: reviewerPrompt, recovery_prompt: recoveryPrompt,
 }) + "\n");
-console.log(`repo-context: ${files.length} files${truncated ? " (truncated)" : ""}, ownership ${ownership ? "ok" : "MISSING"}, planner prompt ${plannerPrompt ? "ok" : "MISSING"}`);
+const ok = (s) => (s ? "ok" : "MISSING");
+console.log(`repo-context: ${files.length} files${truncated ? " (truncated)" : ""}, ownership ${ok(ownership)}, `
+  + `prompts: planner ${ok(plannerPrompt)}, reviewer ${ok(reviewerPrompt)}, recovery ${ok(recoveryPrompt)}`);
