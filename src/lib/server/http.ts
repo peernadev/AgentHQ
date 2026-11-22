@@ -65,19 +65,3 @@ export function optStr(
   if (t.length > max) throw new HttpError(400, `"${key}" is too long (max ${max})`);
   return t;
 }
-
-/** Throws a 500 HttpError if a Supabase call failed. */
-export function check<T>(res: { data: T; error: { message: string } | null }, what: string): T {
-  if (res.error) {
-    console.error(`${what}:`, res.error.message);
-    throw new HttpError(500, `Database error (${what})`);
-  }
-  return res.data;
-}
-
-/** Like `check`, for calls that always return data on success (`.single()`, lists, inserts with select). */
-export function checkData<T>(res: { data: T; error: { message: string } | null }, what: string): NonNullable<T> {
-  const data = check(res, what);
-  if (data === null || data === undefined) throw new HttpError(500, `Database error (${what}: no data)`);
-  return data;
-}
