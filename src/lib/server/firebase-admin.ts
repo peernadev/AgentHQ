@@ -5,7 +5,7 @@ import { getFirestore, type Firestore } from "firebase-admin/firestore";
 // Server-only Firebase Admin client (bypasses firestore.rules). Never import from client components.
 let db: Firestore | null = null;
 
-function getApp(): App {
+export function getAdminApp(): App {
   const existing = getApps()[0];
   if (existing) return existing;
   const b64 = process.env.FIREBASE_SERVICE_ACCOUNT_B64;
@@ -16,7 +16,7 @@ function getApp(): App {
 
 export function getDb(): Firestore {
   // No db.settings(): it throws if called twice, which happens on dev hot reload.
-  db ??= getFirestore(getApp());
+  db ??= getFirestore(getAdminApp());
   return db;
 }
 
@@ -25,6 +25,7 @@ export const col = {
   agents: () => getDb().collection("agents"),
   agentTokens: () => getDb().collection("agentTokens"),
   tasks: () => getDb().collection("tasks"),
+  missions: () => getDb().collection("missions"),
   events: () => getDb().collection("events"),
   scopeRegistry: () => getDb().collection("meta").doc("scopeRegistry"),
 };
