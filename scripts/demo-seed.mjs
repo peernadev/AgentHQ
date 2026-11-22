@@ -230,7 +230,8 @@ async function seed() {
   }));
 
   const b = db.batch();
-  b.set(db.doc(`missions/${MID}`), (({ id, ...m }) => m)(mission));
+  const { id: missionId, ...missionDoc } = mission;
+  b.set(db.doc(`missions/${missionId}`), missionDoc);
   for (const { id, ...p } of participants) b.set(db.doc(`participants/${id}`), p);
   for (const { id, ...a } of agents) b.set(db.doc(`agents/${id}`), a);
   for (const { id, ...t } of tasks) b.set(db.doc(`tasks/${id}`), t);
