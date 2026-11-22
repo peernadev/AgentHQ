@@ -1,0 +1,20 @@
+rules_version = '2';
+// Browser: signed-in users can read operational data. All writes go through the
+// server (Admin SDK bypasses these rules). Owner: B. Deploy: Firebase console ->
+// Firestore -> Rules -> paste -> Publish (or `firebase deploy --only firestore:rules`).
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+
+    match /participants/{id} { allow read: if signedIn(); allow write: if false; }
+    match /agents/{id}       { allow read: if signedIn(); allow write: if false; }
+    match /missions/{id}     { allow read: if signedIn(); allow write: if false; }
+    match /tasks/{id}        { allow read: if signedIn(); allow write: if false; }
+    match /events/{id}       { allow read: if signedIn(); allow write: if false; }
+    match /meta/{id}         { allow read: if signedIn(); allow write: if false; }
+
+    // Never readable from the browser.
+    match /agentTokens/{id}  { allow read, write: if false; }
+    match /outbox/{id}       { allow read, write: if false; }
+  }
+}
