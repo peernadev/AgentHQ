@@ -3,6 +3,7 @@ import { Timestamp, type DocumentData, type Transaction } from "firebase-admin/f
 import type { Agent, TaskStatus } from "@/types/api";
 import { col, getDb } from "./firebase-admin";
 import { HttpError } from "./http";
+import type { ParsedTask } from "./task-input";
 
 export const LEASE_MS = 10 * 60 * 1000;
 export const ACTIVE: TaskStatus[] = ["claimed", "in_progress"];
@@ -34,6 +35,42 @@ export function addEvent(tx: Transaction, e: EventInput, now = Timestamp.now()) 
   tx.create(col.events().doc(), {
     mission_id: null, task_id: null, agent_id: null, message: null, data: null, ...e, created_at: now,
   });
+}
+
+/**
+ * Reads what saving a draft batch needs (Firestore: all reads before writes) and checks that
+ * `depends_on` ids outside the batch exist. Returns the priority to count up from.
+ */
+export async function readDraftContext(tx: Transaction, tasks: ParsedTask[]): Promise<{ lastPriority: number }> {
+  const existingDeps = [...new Set(tasks.flatMap((t) => t.existing_deps))];
+  const [top, deps] = await Promise.all([
+    tx.get(col.tasks().orderBy("priority", "desc").limit(1)),
+    existingDeps.length ? tx.getAll(...existingDeps.map((id) => col.tasks().doc(id))) : [],
+  ]);
+  const missing = deps.filter((d) => !d.exists).map((d) => d.id);
+  if (missing.length) throw new HttpError(400, `depends_on: unknown task ids ${missing.join(", ")}`);
+  return { lastPriority: Number(top.docs[0]?.get("priority") ?? 0) };
+}
+
+/** Writes a validated batch as drafts plus one `created` event each. Missing priorities go last, in batch order. */
+export function writeDraftTasks(
+  tx: Transaction,
+  tasks: ParsedTask[],
+  ctx: { lastPriority: number },
+  meta: { missionId: string | null; createdBy: string; agentId: string | null },
+  now = Timestamp.now(),
+) {
+  let next = ctx.lastPriority;
+  for (const t of tasks) {
+    tx.create(col.tasks().doc(t.id), {
+      mission_id: meta.missionId, title: t.title, description: t.description, acceptance: t.acceptance ?? null,
+      priority: t.priority ?? (next += 10), size: t.size, scope: t.scope, depends_on: t.depends_on, status: "draft",
+      agent_id: null, attempt_id: null, lease_expires_at: null, branch: null, pr_url: null, head_sha: null,
+      checks: null, review: null, result_summary: null, created_by: meta.createdBy,
+      claimed_at: null, completed_at: null, created_at: now, updated_at: now,
+    });
+    addEvent(tx, { type: "created", task_id: t.id, agent_id: meta.agentId, mission_id: meta.missionId, message: t.title }, now);
+  }
 }
 
 /**
