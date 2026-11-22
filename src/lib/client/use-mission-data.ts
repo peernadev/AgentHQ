@@ -128,8 +128,12 @@ export function useMissionData() {
               const listenerErrors = { ...current.listenerErrors };
               delete listenerErrors[name];
               const pendingArrived = name === "missions" && rows.some(row => row.id === current.pendingMissionId);
+              const initialMission = name === "missions" && !current.missionId && !current.pendingMissionId
+                ? [...rows as Mission[]].sort((a, b) => b.created_at.localeCompare(a.created_at) || a.id.localeCompare(b.id))[0]
+                : undefined;
               return {
                 ...current, data: { ...current.data, [name]: rows }, ready: { ...current.ready, [name]: true }, listenerErrors,
+                missionId: initialMission?.id ?? current.missionId,
                 pendingMissionId: pendingArrived ? null : current.pendingMissionId,
               };
             });
