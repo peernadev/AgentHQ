@@ -1,129 +1,159 @@
-# SPEC.md: AgentHQ (working name)
+# SPEC.md: AgentHQ, Google-native mission control
 
-A live mission-control dashboard for hackathon teams running many AI coding agents.
+"Turn a Google Doc brief into coordinated parallel work, evidence-backed results and a team review."
 
 ## 1. The idea
-Student teams now run several AI agents across several laptops on one repo. Agents
-step on each other, nobody can see the whole picture, and the work (and token spend)
-ends up lopsided. AgentHQ gives the team one **orchestrator** agent that breaks the project into
-modular, non-overlapping tasks in a **queue**. **Worker agents** on every laptop (several
-per laptop is fine) pull the top task, do it, open a PR, and pull the next one. A live
-dashboard shows who is doing what, what's done, what's next, and whether the work is split fairly.
+Student teams run many AI coding agents across several laptops on one repo. Agents collide,
+nobody has the full picture, and work splits unevenly. AgentHQ: a **Gemini planner**
+reads the team's Google Doc brief and drafts small, file-scoped tasks. Humans approve.
+**Worker agents** (Claude Code, Codex, Antigravity…) on every laptop claim tasks via
+the `hq` CLI, work in isolated worktrees, run checks and open PRs. A **Gemini reviewer**
+checks the evidence, a **recovery planner** proposes fixes for failures, and AgentHQ
+writes the **handoff Doc** and proposes a **Calendar review slot**. Everything is live on
+a mission-control dashboard.
 
-## 2. Demo flow (3 minutes, the top priority)
-1. Dashboard is open on the projector: 3 participants, 0 agents, empty queue.
-2. We paste a project goal ("build a landing page with signup and a leaderboard").
-   The orchestrator drafts ~8 tasks, each with a **file scope**, dependencies, size and
-   acceptance criteria. They appear as drafts in the queue.
-3. We edit one, drag one higher, and click **Approve all**. The tasks turn "queued".
-4. Three laptops (live) start worker agents. Agent cards light up one by one; each
-   claims a task. The **scope lock map** shows nobody touches the same files.
-5. A task finishes: its PR link appears, it moves to "In review", and the agent
-   immediately claims the next one.
-6. We kill an agent on stage. Within the timeout it turns "offline" and its task goes
-   back to the queue, and another agent picks it up.
-7. The **fairness meter** shows workload per person staying roughly even. One person is
-   ahead, so the next task goes to a teammate.
-8. **Wow moment:** "We built AgentHQ *using* AgentHQ. Here's the activity log from today."
+## 2. Demo flow (3 min, top priority)
+1. Sign in with Google. Mission control is empty: 3 teammates, no agents.
+2. **New mission → pick a Google Doc brief from Drive.** Gemini drafts ~8 scoped tasks,
+   cites the brief, and writes the plan into a new Google Doc.
+3. We edit one task, drag one higher, **Approve all**.
+4. Workers on our laptops join and claim tasks live. The scope lock map shows no file overlap.
+5. A task fails its checks for real. The **recovery planner** proposes a smaller fix task, and we approve it.
+6. A task's PR lands. The **Gemini reviewer** marks it pass with evidence (SHA, checks, diff summary).
+7. We kill an agent. Its lease expires and another worker picks up the task.
+8. **Finish mission:** the handoff Doc is generated, with a Calendar review slot proposed and confirmed.
+9. "We built AgentHQ using AgentHQ." Long coding phases are pre-recorded and labeled as such.
 
-## 3. Must-haves (only what the demo needs)
-- [ ] Database + atomic claim (no two agents get the same task; no overlapping scopes)
-- [ ] `hq` CLI: join, claim, progress, review, done, fail, status, tasks add
-- [ ] Worker prompt (the loop agents follow) and orchestrator prompt (how to split work)
-- [ ] Dashboard: agent board, queue (approve drafts, reorder), in review / done, activity feed
-- [ ] Live updates (Supabase Realtime, no refresh)
-- [ ] Stale-agent recovery (heartbeat timeout puts the task back in the queue)
-- [ ] Fairness meter + fairness rule in claim
-- [ ] Scope lock map (which folders are locked by which agent)
+## 3. Phases (build in order; each phase is demoable)
+**Phase 1, core loop (no card needed)**
+- [ ] Firebase Auth (Google sign-in) on the dashboard
+- [ ] Firestore data model + server claim transaction (scopes, deps, fairness, leases)
+- [ ] Agent API routes + `hq` CLI (join, claim, progress, review, done, fail, status)
+- [ ] Gemini planner from a typed goal → draft tasks; approve/reorder in UI
+- [ ] Live mission-control UI (Firestore onSnapshot)
 
-## 4. Cut list (only if time allows)
-- Dependency graph view of the queue
-- `hq ask`: agent asks a human a question; answer it from the dashboard
-- GitHub webhook: auto-mark "done" when the PR merges (until then: "Mark merged" button)
-- Real token/cost tracking per agent (read usage from each tool), replacing workload points
-- Show the Vercel preview link on each task card
-- In-app "Plan with orchestrator" button that calls an LLM API (needs sponsor API credits)
+**Phase 2, Google workflow (no card needed)**
+- [ ] Drive brief via Google Picker → planner input (+ citations to the brief)
+- [ ] Plan Doc + handoff Doc via Docs API (idempotent)
+- [ ] Gemini reviewer (pass/revise/needs-human, bound to head SHA + check results)
+- [ ] Recovery planner on failed tasks → draft fix task
+- [ ] Planner/reviewer/recovery built as ADK agents (`@google/adk`) with bounded tools
 
-## 5. Data model
-Defined in `supabase/schema.sql` (types mirrored in `src/types/api.ts`).
-- **participants**: name, color
-- **agents**: participant, name ("eran-mbp-1"), machine, tool, model, role
-  (worker | orchestrator), status (idle | working | blocked | offline), current_task_id,
-  last_heartbeat
-- **tasks**: title, description, acceptance, priority (lower = sooner), size (S/M/L),
-  **scope** (path prefixes the task may edit), depends_on, status
-  (draft → queued → claimed → in_progress → in_review → done | failed | cancelled),
-  agent_id, branch, pr_url, result_summary
-- **events**: append-only activity log (created, approved, claimed, progress, pr_opened,
-  done, failed, released, fairness_skip)
-- **agent_tokens**: hashed per-agent API tokens (never readable by the browser)
-- **participant_workload** (view): points per person (S=1, M=2, L=4) and tasks done
+**Phase 3, if time / once Blaze billing exists**
+- [ ] Calendar: free/busy → propose review slot → create event after confirmation
+- [ ] Firebase App Hosting (move off Vercel) · Cloud Storage for logs/screenshots
+- [ ] Antigravity worker adapter (`agy` headless CLI wrapper around `hq`)
+- [ ] Sheets workload report · Gmail handoff draft (drafts only)
+- [ ] Search grounding for research tasks
 
-## 6. How interference is prevented
-1. **Scopes.** Every queued task lists path prefixes, like `src/components/queue/`. The
-   claim function refuses a task whose scope overlaps any task that is claimed,
-   in progress or in review. A scope lock is released only when the task is done (merged).
-2. **Dependencies.** A task is claimable only when everything in depends_on is done.
-3. **Shared files go first.** The orchestrator puts changes to shared files (types,
-   schema, package.json, theme) into tiny early tasks that others depend on.
-4. **One branch per task**, PRs into main, same git rules as AGENTS.md.
-5. Claims are serialized with a Postgres advisory lock, so two agents can never race.
+## 4. Stack
+- Next.js 16 (App Router, TS), Tailwind, shadcn/ui
+- **Firebase Auth** (Google provider): who is on the dashboard
+- **Cloud Firestore**: all operational data. Browser reads only (security rules);
+  all writes go through API routes using the **Firebase Admin SDK**
+- **Gemini API** (`@google/genai`, Flash model, structured JSON output) + **ADK** (`@google/adk`)
+- **Workspace APIs** (Drive, Docs, Calendar) called server-side with the user's
+  short-lived OAuth access token (Google Identity Services in the browser). Tokens are never stored.
+- Hosting: Vercel now → Firebase App Hosting in Phase 3 (needs Blaze, Node 22+)
+- `hq` CLI: plain Node, no dependencies
 
-## 7. Fairness (by workload, not tokens)
-- Each task is worth points by size: S = 1, M = 2, L = 4. A person's workload = points of
-  tasks their agents have taken (active + done). See the `participant_workload` view.
-- Claim rule: if you're more than 2 points ahead of the team average **and** a teammate
-  has an idle online agent, you get no task this round; the event log says why.
-- The orchestrator keeps task sizes even so work spreads well.
-- Dashboard: one bar per person against the team average line.
-- Pitch note: points are a stand-in for token spend; real usage tracking is the next step.
-
-## 8. API contracts (Next.js route handlers)
-Agent calls send `Authorization: Bearer <agent token>`. Every agent call also counts
-as a heartbeat. The dashboard reads Supabase directly (read-only); writes go through the API.
-
-| Method | Route | Body | Returns | Who |
-|---|---|---|---|---|
-| POST | /api/agents/join | JoinRequest | JoinResponse | CLI (needs TEAM_JOIN_CODE) |
-| POST | /api/agents/heartbeat | { status?, note? } | { ok } | worker |
-| POST | /api/tasks/claim | none | ClaimResponse | worker |
-| POST | /api/tasks/:id/progress | { message } | { ok } | worker |
-| POST | /api/tasks/:id/review | { pr_url, branch, summary? } | { ok } | worker |
-| POST | /api/tasks/:id/done | { summary? } | { ok } | worker or dashboard |
-| POST | /api/tasks/:id/fail | { reason } | { ok } | worker |
-| POST | /api/tasks | { tasks: CreateTaskInput[] } | { ids } | orchestrator (created as drafts) |
-| PATCH | /api/tasks/:id | UpdateTaskInput | Task | dashboard |
-| POST | /api/tasks/approve | { ids } | { ok } | dashboard (draft → queued) |
-| POST | /api/tasks/reorder | { ids } (new order) | { ok } | dashboard |
-
-Dashboard write routes: no auth for the hackathon. Mention it to judges as a known shortcut.
-
-## 9. `hq` CLI (Node, no dependencies, in `cli/hq.mjs`)
-Config lives in `.hq.json` in the current folder (gitignored), so each worktree is its own agent.
+## 5. Firestore data model
 ```
-hq join --code <TEAM_JOIN_CODE> --participant Eran --name eran-mbp-1 [--role worker|orchestrator] [--model terra]
-hq claim                         # prints task JSON, or NO_TASK
-hq progress <id> "message"
-hq review <id> --pr <url> --branch <name>
-hq done <id> [--summary "..."]
-hq fail <id> "reason"
-hq status [--json]               # queue + agents snapshot
-hq tasks add plan.json           # orchestrator: submit drafts
+participants/{id}   name, email, color, points, tasks_done, created_at
+agents/{id}         participant_id, name, machine, tool, model, role(worker|orchestrator),
+                    status(idle|working|blocked|offline), current_task_id, note, last_heartbeat
+agentTokens/{sha}   agent_id                      (server-only, never readable by the browser)
+missions/{id}       title, goal, source_doc_id, source_doc_url, plan_doc_url, handoff_doc_url,
+                    status(planning|awaiting_approval|running|reviewing|done), created_by, created_at
+tasks/{id}          mission_id, title, description, acceptance, priority, size(S|M|L),
+                    scope[], depends_on[], status(draft|queued|claimed|in_progress|in_review|done|failed|cancelled),
+                    agent_id, attempt_id, lease_expires_at, branch, pr_url, head_sha,
+                    checks{lint,typecheck,build}, review{verdict,notes,sha}, result_summary,
+                    created_by, claimed_at, completed_at, created_at, updated_at
+events/{auto}       mission_id, task_id, agent_id, type, message, data, created_at
+meta/scopeRegistry  locks: { [taskId]: string[] }, updated_at
+outbox/{key}        kind(plan_doc|handoff_doc|calendar_event), mission_id, status, result_id
 ```
-Env: HQ_URL (defaults to the production Vercel URL).
+Points per size (fairness): S=1, M=2, L=4.
 
-## 10. Who owns what
-- **A, frontend/dashboard:** `src/app/(dashboard)/**`, `src/components/**`. Agent board, queue,
-  review/done columns, activity feed, fairness meter, scope map. Use mock data from
-  `src/lib/mocks/` until B's tables exist, then switch to Supabase Realtime.
-- **B, backend:** `supabase/**`, `src/app/api/**`, `src/lib/server/**`. Schema, claim and
-  stale functions, all API routes, token auth.
-- **C, agents + demo:** `cli/**`, `prompts/**`, `scripts/seed*`, README, pitch. The hq CLI,
-  worker and orchestrator prompts, seed data, demo script, backup video.
+## 6. Claim transaction (replaces the SQL claim RPC)
+One Admin SDK `runTransaction`. **Every claim reads and writes `meta/scopeRegistry`**,
+which serializes claims (same role as the Postgres advisory lock).
+1. Read the registry, the agent, all participants (for fairness), up to 50 `queued`
+   tasks ordered by priority, and active tasks whose `lease_expires_at < now`.
+2. Release expired leases: task → queued, clear agent/attempt, remove its lock,
+   subtract its points, mark agent offline, add a `released` event.
+3. Fairness: if my points > average of online participants + 2 and a teammate has an
+   idle online worker → no task this round (`fairness_skip` event).
+4. Pick the first queued task whose deps are all `done` and whose scope doesn't
+   prefix-overlap any lock in the registry.
+5. Write: task claimed + new `attempt_id` + `lease_expires_at = now + 10 min`;
+   `registry.locks[taskId] = scope`; participant points += size points; agent working.
+- **Every agent mutation must send `attempt_id`.** A mismatch returns 409, so a worker
+  that lost its lease can't change the task anymore.
+- Any agent call extends the lease by 10 min.
+- Locks stay through `in_review` and are released by `done` (merged).
+- **Never call Gemini or Workspace inside a transaction** (callbacks can rerun).
+  Commit an `outbox` record, then run the external action idempotently afterwards.
+- Composite index needed: tasks(status, priority). Firestore prints a create-index link the first time.
 
-## 11. Timeline (adjust to the event's hours)
-- **Hour 0–1:** setup (SETUP.md), contracts are already in the repo.
-- **By hour 3:** vertical slice. One real agent joins, claims, reviews, and the board updates live.
-- **Hour 3–4:** **dogfood.** Load our remaining work into AgentHQ and run our own agents from it.
-- **Feature freeze:** 4 hours before the deadline.
-- **Last 2 hours:** rehearse the demo flow, record the backup video.
+## 7. AI roles (server-side; ADK in Phase 2)
+- **Planner:** input = brief text (cited), repo tree, AGENTS.md ownership, current queue
+  and locks. Output = CreateTaskInput[] (JSON schema). Server validates: schema, no
+  dependency cycles, real paths, non-overlapping parallel scopes. Tasks are saved as drafts.
+- **Reviewer:** input = task, head SHA, diff summary, check results. Output =
+  pass | revise | needs_human + evidence. A review is void if the SHA changes. It never
+  replaces passing checks or a human merge.
+- **Recovery:** input = failure reason/logs. Output = a smaller fix task or a prerequisite (draft).
+- Tools are bounded: read_selected_file, create_plan_doc, read_task_evidence,
+  propose_task_revision, find_review_slots, create_confirmed_review_event. No shell, no
+  arbitrary writes. Content from Docs/Drive can never authorize an action.
+
+## 8. API (Next.js route handlers)
+Agent routes: `Authorization: Bearer <agent token>`; every call is a heartbeat and renews the lease.
+| Method | Route | Body | Who |
+|---|---|---|---|
+| POST | /api/agents/join | { code, participant, name, machine?, tool?, model?, role? } | CLI |
+| POST | /api/tasks/claim | none → { task \| null, reason? } (task includes attempt_id) | worker |
+| POST | /api/tasks/:id/progress | { attempt_id, message } | worker |
+| POST | /api/tasks/:id/review | { attempt_id, pr_url, branch, head_sha, checks, summary? } | worker |
+| POST | /api/tasks/:id/fail | { attempt_id, reason, log_excerpt? } | worker |
+| POST | /api/tasks/:id/done | { summary? } | dashboard (after merge) |
+| POST | /api/tasks | { mission_id?, tasks: CreateTaskInput[] } | orchestrator agent |
+| PATCH | /api/tasks/:id | UpdateTaskInput | dashboard |
+| POST | /api/tasks/approve | { ids } | dashboard |
+| POST | /api/tasks/reorder | { ids } | dashboard |
+| POST | /api/missions | { title, goal, source_doc_id?, google_access_token? } → mission + drafts | dashboard |
+| POST | /api/missions/:id/review-task | { task_id } → Gemini review | dashboard |
+| POST | /api/missions/:id/recover | { task_id } → draft fix task | dashboard |
+| POST | /api/missions/:id/handoff | { google_access_token } → handoff Doc URL | dashboard |
+Dashboard routes verify the Firebase ID token (`Authorization: Bearer <idToken>`) and
+that the email belongs to a participant.
+
+## 9. `hq` CLI (cli/hq.mjs, Node 22+, no deps, config in ./.hq.json)
+```
+hq join --code <TEAM_JOIN_CODE> --participant <name> --name <agent> [--role worker|orchestrator] [--tool claude|codex|antigravity]
+hq claim                    # prints task JSON (with attempt_id) or NO_TASK
+hq progress <id> "msg"
+hq review <id> --pr <url> --branch <b>     # CLI fills head_sha and runs lint/typecheck/build itself
+hq fail <id> "reason"       # attaches the last 40 lines of the failing check
+hq status [--json]
+hq tasks add plan.json      # orchestrator agents
+```
+The CLI keeps attempt_id in .hq.json and sends it automatically.
+
+## 10. Ownership
+- **A, mission-control UI:** `src/app/(dashboard)/**`, `src/components/**`, `src/lib/client/**`
+  (Firebase client, sign-in, Picker, GIS token). Antigravity-inspired layout: missions left,
+  worker board center, inspector right, timeline bottom.
+- **B, data + agent API + CLI:** `src/lib/server/**` (except `google/`), agent and task
+  routes in `src/app/api/**`, `firestore.rules`, `firestore.indexes.json`, `cli/**`
+- **C, Google AI + Workspace:** `src/lib/server/google/**` (gemini, adk, drive, docs, calendar),
+  `src/app/api/missions/**`, `prompts/**`, demo script. (B takes this until a third person is free.)
+- Shared, announce first: `src/types/**`, `package.json`, root layout, globals.css, AGENTS.md, SPEC.md
+
+## 11. Fairness, honesty, pitch
+- Fairness = workload points (stand-in for token spend; real usage tracking is future work).
+- Say plainly in the demo: workers are launched by humans on laptops; recorded phases are labeled.
+- Pitch: "Google-native mission control that turns team knowledge into parallel action
+  and shows what every agent did, why it failed, and how the team recovered."
