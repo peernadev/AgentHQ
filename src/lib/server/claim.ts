@@ -25,7 +25,9 @@ export async function claimNextTask(agentId: string): Promise<ClaimResponse> {
       tx.get(col.tasks().where("status", "==", "queued")),
       tx.get(col.tasks().where("status", "in", ACTIVE)),
     ]);
-    const depIds = [...new Set(queuedSnap.docs.flatMap((d) => (d.get("depends_on") ?? []) as string[]))];
+    // Active tasks too: one whose lease expired below is released and claimable in this same round.
+    const depIds = [...new Set([...queuedSnap.docs, ...activeSnap.docs]
+      .flatMap((d) => (d.get("depends_on") ?? []) as string[]))];
     const depSnaps = depIds.length ? await tx.getAll(...depIds.map((id) => col.tasks().doc(id))) : [];
     const depDone = new Set(depSnaps.filter((s) => s.exists && s.get("status") === "done").map((s) => s.id));
 
@@ -58,6 +60,7 @@ export async function claimNextTask(agentId: string): Promise<ClaimResponse> {
     };
 
     // ---- 1. release expired leases ----
+    const candidates = [...queuedSnap.docs];
     for (const t of activeSnap.docs) {
       const lease = t.get("lease_expires_at") as Timestamp | null;
       if (lease && lease.toMillis() > now.toMillis()) {
@@ -71,6 +74,7 @@ export async function claimNextTask(agentId: string): Promise<ClaimResponse> {
         status: "queued", agent_id: null, attempt_id: null, lease_expires_at: null, claimed_at: null, updated_at: now,
       });
       delete locks[t.id];
+      candidates.push(t);
       if (holder && agents.has(holder)) {
         addPoints(agents.get(holder)!.participant_id, -points(t.get("size")));
         setAgent(holder, { status: "offline", current_task_id: null });
@@ -102,7 +106,7 @@ export async function claimNextTask(agentId: string): Promise<ClaimResponse> {
 
     // ---- 3. pick: lowest priority first, deps done, no scope overlap with any lock ----
     const lockScopes = Object.values(locks);
-    const pick = queuedSnap.docs
+    const pick = candidates
       .sort((a, b) => (a.get("priority") ?? 100) - (b.get("priority") ?? 100)
         || ms(a.get("created_at")) - ms(b.get("created_at")))
       .find((t) =>
@@ -122,10 +126,11 @@ export async function claimNextTask(agentId: string): Promise<ClaimResponse> {
     locks[pick.id] = pick.get("scope") ?? [];
     addPoints(me.participant_id, points(pick.get("size")));
     setAgent(agentId, { status: "working", current_task_id: pick.id });
+    // +1 ms so the activity feed always shows a same-round "released" before this "claimed".
     addEvent(tx, {
       type: "claimed", task_id: pick.id, agent_id: agentId, mission_id: pick.get("mission_id") ?? null,
       message: pick.get("title"),
-    }, now);
+    }, Timestamp.fromMillis(now.toMillis() + 1));
     return finish({ task: { ...fromDoc<Task>(pick), ...(toIso(claim) as Partial<Task>) } });
   });
 }
