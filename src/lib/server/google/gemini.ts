@@ -17,6 +17,9 @@ const CALL_TIMEOUT_MS = 25_000;
 // a turn needs at least that much, and that much is kept back for each model not tried yet.
 const MIN_CALL_MS = 10_000;
 const RESERVE_MS = MIN_CALL_MS;
+// Pause before another pass over the chain when every model was busy: 2 s, 4 s, 8 s, 8 s...
+const BACKOFF_MS = 2_000;
+const MAX_BACKOFF_MS = 8_000;
 
 /** Every model was overloaded or timed out within the budget. */
 export class GeminiBusyError extends HttpError {
@@ -61,29 +64,38 @@ export function jsonSession(opts: {
     },
     async call(contents) {
       // Our own timeout per call (SDK retries off: its default backoff can run for minutes).
-      for (; m < MODELS.length; m++) {
-        const model = MODELS[m];
-        const left = deadline - Date.now();
-        const timeout = Math.min(CALL_TIMEOUT_MS, left - RESERVE_MS * (MODELS.length - 1 - m));
-        if (timeout < MIN_CALL_MS) continue; // too little time for this one; give it to the next model
-        try {
-          const res = await gemini().models.generateContent({
-            model,
-            contents,
-            config: {
-              systemInstruction: opts.system,
-              responseMimeType: "application/json",
-              responseJsonSchema: opts.schema,
-              temperature: opts.temperature ?? 0.3,
-              httpOptions: { timeout, retryOptions: { attempts: 1 } },
-            },
-          });
-          return res.text;
-        } catch (e) {
-          console.error(`Gemini ${opts.label} call failed (${model}, timeout ${timeout} ms):`,
-            e instanceof Error ? e.message.slice(0, 300) : e);
-          if (!isTransient(e)) throw new HttpError(502, `Gemini ${opts.label} call failed`);
+      // All models busy (typically 503s within ~2 s): back off and go round the chain again
+      // while the budget still fits a call, instead of giving up with most of it unused.
+      for (let round = 0; ; round++) {
+        for (; m < MODELS.length; m++) {
+          const model = MODELS[m];
+          const left = deadline - Date.now();
+          const timeout = Math.min(CALL_TIMEOUT_MS, left - RESERVE_MS * (MODELS.length - 1 - m));
+          if (timeout < MIN_CALL_MS) continue; // too little time for this one; give it to the next model
+          try {
+            const res = await gemini().models.generateContent({
+              model,
+              contents,
+              config: {
+                systemInstruction: opts.system,
+                responseMimeType: "application/json",
+                responseJsonSchema: opts.schema,
+                temperature: opts.temperature ?? 0.3,
+                httpOptions: { timeout, retryOptions: { attempts: 1 } },
+              },
+            });
+            return res.text;
+          } catch (e) {
+            console.error(`Gemini ${opts.label} call failed (${model}, timeout ${timeout} ms):`,
+              e instanceof Error ? e.message.slice(0, 300) : e);
+            if (!isTransient(e)) throw new HttpError(502, `Gemini ${opts.label} call failed`);
+          }
         }
+        const backoff = Math.min(BACKOFF_MS * 2 ** round, MAX_BACKOFF_MS);
+        if (deadline - Date.now() - backoff < MIN_CALL_MS) break;
+        console.warn(`Gemini ${opts.label}: every model busy; retrying the chain in ${backoff} ms`);
+        await new Promise((resolve) => setTimeout(resolve, backoff));
+        m = 0;
       }
       throw new GeminiBusyError();
     },

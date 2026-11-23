@@ -116,8 +116,18 @@ export function MissionDashboard() {
   async function runAction(action: () => Promise<unknown> | void) {
     try { await action(); } catch { /* The live adapter exposes the server error without changing Firestore state. */ }
   }
+  /** Reason and log from the task's latest "failed" event (the /fail route stores them there). */
+  function lastFailure(task: Task): { reason: string; log: string | null } | null {
+    const event = board.events.filter(item => item.task_id === task.id && item.type === "failed")
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+    if (!event) return null;
+    const reason = typeof event.data?.reason === "string" ? event.data.reason : event.message;
+    const log = typeof event.data?.log_excerpt === "string" ? event.data.log_excerpt : null;
+    return reason || log ? { reason: reason ?? "No reason recorded.", log } : null;
+  }
   function taskDetail(task: Task) {
     if (inspectedId !== task.id) return null;
+    const failure = task.status === "failed" ? lastFailure(task) : null;
     const agent = agents.find(item => item.id === task.agent_id);
     const held = ["claimed", "in_progress", "in_review"].includes(task.status);
     const reviewIsCurrent = task.review && task.head_sha === task.review.sha;
@@ -141,6 +151,7 @@ export function MissionDashboard() {
       <h3>Acceptance criteria</h3><p>{task.acceptance || "No acceptance criteria supplied."}</p>
       {task.depends_on.length > 0 && <><h3>Dependencies</h3><p>{dependencyNames(task)}</p></>}
       {task.result_summary && <><h3>Reported result</h3><p>{task.result_summary}</p></>}
+      {failure && <><h3>Failure reason</h3><p>{failure.reason}</p>{failure.log ? <pre className={styles.failureLog} aria-label="Last lines of the failing check">{failure.log}</pre> : <p className={styles.fine}>No check log was attached.</p>}</>}
       {task.review && <div className={styles.reviewCopy}><h3>{reviewIsCurrent ? `Review · ${{ pass: "pass", revise: "revision requested", needs_human: "needs human" }[task.review.verdict]}` : "Review · outdated SHA"}</h3><p>{task.review.notes}</p>{task.review.evidence?.length ? <ul className={styles.reviewEvidence}>{task.review.evidence.map((evidence, index) => <li key={index}>{evidence}</li>)}</ul> : null}<p className={styles.fine}>Review SHA <code>{task.review.sha}</code>{reviewIsCurrent ? " matches the displayed head." : " does not match the current head; this review is void."} A review never replaces passing checks or a human merge.</p></div>}
       {task.pr_url && <div className={styles.reviewCopy}><h3>Pull request</h3><a href={task.pr_url} target="_blank" rel="noreferrer">Open pull request<ArrowUpRight aria-hidden="true" /></a>{task.branch && <p className={styles.fine}>Branch <code>{task.branch}</code></p>}</div>}
       {task.status === "in_review" && <div className={styles.taskActions} aria-busy={taskPending}>
@@ -186,7 +197,7 @@ export function MissionDashboard() {
           <TabsContent value="attention">
             {attentionCount ? <><h2>{attentionCount} {attentionCount === 1 ? "thing needs" : "things need"} your attention</h2><div className={styles.attentionList}>
               {reviews.map(task => <article className={styles.attentionRow} key={task.id}><div className={styles.rowCopy}><Eye aria-hidden="true" /><div><h3>{task.title}</h3><p><span className={task.checks && Object.values(task.checks).some(passed => !passed) ? styles.failure : undefined}>{task.checks && Object.values(task.checks).some(passed => !passed) ? "Reported checks failed" : "Review requested"}</span><span className={styles.separator}>·</span>{ownerName(task)}</p></div></div><Button variant="outline" className={styles.control} onClick={event => inspectedId === task.id ? closeInspector() : inspect(task.id, event.currentTarget)} aria-expanded={inspectedId === task.id} aria-controls={inspectedId === task.id ? `task-detail-${task.id}` : undefined}>Review changes</Button>{taskDetail(task)}</article>)}
-              {failures.map(task => <article className={styles.attentionRow} key={task.id}><div className={styles.rowCopy}><HelpCircle aria-hidden="true" /><div><h3>{task.title}</h3><p><span className={styles.failure}>Task failed</span><span className={styles.separator}>·</span>{task.result_summary || "Inspect the reported evidence and propose a recovery draft."}</p></div></div><Button variant="outline" className={styles.control} onClick={event => inspectedId === task.id ? closeInspector() : inspect(task.id, event.currentTarget)} aria-expanded={inspectedId === task.id}>Inspect failure</Button>{taskDetail(task)}</article>)}
+              {failures.map(task => <article className={styles.attentionRow} key={task.id}><div className={styles.rowCopy}><HelpCircle aria-hidden="true" /><div><h3>{task.title}</h3><p><span className={styles.failure}>Task failed</span><span className={styles.separator}>·</span>{lastFailure(task)?.reason || task.result_summary || "Inspect the reported evidence and propose a recovery draft."}</p></div></div><Button variant="outline" className={styles.control} onClick={event => inspectedId === task.id ? closeInspector() : inspect(task.id, event.currentTarget)} aria-expanded={inspectedId === task.id}>Inspect failure</Button>{taskDetail(task)}</article>)}
               {blocked.map(agent => { const task = tasks.find(item => item.id === agent.current_task_id); return <article className={styles.attentionRow} key={agent.id}><div className={styles.rowCopy}><HelpCircle aria-hidden="true" /><div><h3>{agent.name} is blocked</h3><p>{agent.note || (task ? `Needs help with ${task.title}.` : "The worker has not supplied a reason.")}</p></div></div>{task && <Button variant="outline" className={styles.control} onClick={event => inspectedId === task.id ? closeInspector() : inspect(task.id, event.currentTarget)} aria-expanded={inspectedId === task.id}>Inspect task</Button>}{task && taskDetail(task)}</article>; })}
             </div></> : <div className={styles.empty}><h2>{board.drafts.length ? "No reviews or failures waiting" : "No decisions waiting on you"}</h2><p>{board.drafts.length ? "Review the draft tasks below before they enter the queue." : "Open Tasks to see the queue, or start a new mission."}</p>{!board.drafts.length && <Button variant="outline" className={styles.control} onClick={newMission}>New mission</Button>}</div>}
             {board.drafts.length > 0 ? <section className={styles.readiness}><div className={styles.sectionHead}><div><h2>{board.drafts.length} {board.drafts.length === 1 ? "draft ready" : "drafts ready"} for approval</h2><p>Adds these tasks to the shared queue.</p></div>{approvalButton()}</div>{drafts()}</section> : board.queue.length > 0 && <div className={styles.queueNote}><p>{board.queue.length} {board.queue.length === 1 ? "task is" : "tasks are"} queued. Workers claim eligible work through the hq CLI.</p><Button variant="outline" className={styles.control} onClick={() => setView("tasks")}>View queue</Button></div>}
