@@ -92,7 +92,7 @@ The user approved option 01 on 2026-11-21 as the replacement visual direction. T
 
 **Key Characteristics:**
 
-- A neutral light canvas, graphite controls and a quiet sidebar.
+- A near-black canvas, thin borders and one bright green accent used sparingly (dark mode only, 2026-11-23).
 - Flat rows, generous spacing and details revealed on demand.
 - Geist Sans for reading; Geist Mono with tabular figures for operational numbers.
 - Explicit action labels, visible focus and readable status words.
@@ -103,35 +103,37 @@ The user approved option 01 on 2026-11-21 as the replacement visual direction. T
 - Typography: Geist Sans for UI; Geist Mono and tabular figures for numeric figures, timestamps, percentages and code. This explicit user-approved pair replaces the original one-font-family rule.
 - Mobile first; the mission workspace must work at 375px wide.
 - Every async action shows a loading state; empty states provide concise context and an action.
-- Keep the approved light Quiet workspace: flat, largely borderless surfaces, hairline dividers, generous spacing and no heavy shadows.
-- Keep a strict neutral palette with at most one desaturated decorative accent. Current production uses graphite as its primary emphasis; failure red is semantic feedback.
+- Theme (2026-11-23, replaces the light Quiet palette): dark mode only, mostly black. Tokens live in `globals.css` as the shadcn/Tailwind theme: background #0A0B0D, surface #111317, raised surface #16191E, border #23272E, text #E6E8EB, muted text #8B929C, accent green #22E35A (hover #1BC44C).
+- Green is for primary buttons, the focus ring, active/working indicators and links only. The only glow (`shadow-glow`) is on the primary button and working agents. No other gradients.
+- Status colors are distinct tokens and always paired with a text label: working = green, in review = amber (`status-review`), failed = red, idle = gray, offline = dim gray.
+- Optional texture: a very faint hexagon pattern (`bg-hex`) on the page backdrop or header only, never behind text.
+- Keep flat surfaces, thin borders, generous spacing and one sans font (Geist) for UI text; Geist Mono only for figures, timestamps and code.
+- The sign-in page uses the same theme: solid card on the hex backdrop, AgentHQ mark, one primary button.
 - For the mission page, Attention is the default. Its initial two decisions stay separate from the three drafts awaiting approval. Tasks, Team and Activity are alternate tabs; coordination is a compact disclosure.
 - Task evidence appears inline on demand. The selected mission page replaces the earlier dense board and permanent inspector direction.
 - Preserve the AgentHQ name and native monochrome AgentHQMark SVG.
 
 ## Colors
 
-The palette is achromatic paper and graphite. Its gentle rail tone comes from a mix of the existing muted and background tokens; it is not a separate warm color added to the global theme.
+Near-black surfaces in three steps, thin gray borders and a single bright green accent. All values are tokens in `src/app/globals.css`; application code uses the token names (`bg-surface`, `text-status-review`, `shadow-glow`...), never hex.
 
-### Primary
+| Role | Token | Value |
+|---|---|---|
+| Page background | `background` | #0A0B0D |
+| Surface (cards, panels) | `surface` / `card` / `muted` | #111317 |
+| Raised surface (popovers, hover) | `surface-raised` / `popover` / `accent` | #16191E |
+| Border, inputs | `border` / `input` | #23272E |
+| Text | `foreground` | #E6E8EB |
+| Muted text | `muted-foreground` | #8B929C |
+| Accent: primary, ring, links | `primary` / `ring` | #22E35A |
+| Accent hover | `primary-hover` | #1BC44C |
+| Working | `status-working` | #22E35A |
+| In review | `status-review` | #F5B83D |
+| Failed, destructive | `status-failed` / `destructive` | #F0525A |
+| Idle | `status-idle` | #8B929C |
+| Offline | `status-offline` | #4A5059 |
 
-- **Graphite:** primary actions and the brand mark. It creates emphasis without adding another hue.
-- **Soft White:** text on graphite actions.
-
-### Neutral
-
-- **Paper:** the working canvas, form surfaces and transient announcements.
-- **Ink:** headings, selected navigation and important action text.
-- **Soft Chalk:** selected mission rows and expanded detail backgrounds; shared by the existing muted and secondary roles.
-- **Quiet Grey:** explanatory copy, metadata and inactive navigation.
-- **Hairline Grey:** row separators, field boundaries and the sidebar divider.
-- **Rail Mist:** the slightly toned mission rail.
-
-### Semantic feedback
-
-- **Failure Red:** actual failed checks, blocked worker emphasis and validation errors. Status is also written in text; color never carries the state alone.
-
-**The Neutral First Rule.** Use semantic tokens from the incumbent stylesheet. Do not add decorative status palettes, gradients or colored panels to this workspace.
+**The Sparing Green Rule.** Green marks what you can act on or what is alive (primary action, focus, working). If more than a few green elements are visible at once, demote some to neutral.
 
 ## Typography
 

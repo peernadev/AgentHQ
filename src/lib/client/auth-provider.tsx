@@ -8,6 +8,8 @@ import {
   GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut as firebaseSignOut,
   type User,
 } from "firebase/auth";
+import { AgentHQMark } from "@/components/agenthq-mark";
+import { Button } from "@/components/ui/button";
 import { getFirebaseClient } from "./firebase";
 
 interface FirebaseAuthState {
@@ -148,25 +150,35 @@ export function FirebaseAuthGate({ children }: { children: ReactNode }) {
   if (user) return <Fragment key={user.uid}>{children}</Fragment>;
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background p-6 text-foreground">
-      <section className="w-full max-w-sm space-y-5 rounded-xl border border-border bg-card p-7 text-card-foreground" aria-labelledby="sign-in-title">
-        <div className="space-y-2">
-          <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">AgentHQ</p>
-          <h1 id="sign-in-title" className="text-2xl font-semibold">Sign in to mission control</h1>
-          <p className="text-sm text-muted-foreground">Use your team&apos;s Google account to continue.</p>
+    <main className="relative flex min-h-screen items-center justify-center bg-background p-4 font-sans text-foreground sm:p-6">
+      {/* Hexagon texture stays in the backdrop; the card below is solid so it never sits behind text. */}
+      <div className="bg-hex pointer-events-none absolute inset-0 [mask-image:radial-gradient(ellipse_at_center,transparent_20%,black_75%)]" aria-hidden="true" />
+      <section className="relative w-full max-w-sm space-y-7 rounded-xl border border-border bg-card p-7 text-card-foreground sm:p-8" aria-labelledby="sign-in-title">
+        <div className="flex items-center gap-2.5 text-sm font-medium">
+          <span className="flex size-8 items-center justify-center rounded-lg border border-border bg-surface-raised text-primary">
+            <AgentHQMark className="size-[18px]" />
+          </span>
+          AgentHQ
         </div>
-        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-        <button
+        <div className="space-y-2">
+          <h1 id="sign-in-title" className="text-2xl font-semibold tracking-tight">Sign in to mission control</h1>
+          <p className="text-sm leading-relaxed text-muted-foreground">Use your team&apos;s Google account to see missions, workers and reviews.</p>
+        </div>
+        {error && <p role="alert" className="rounded-md border border-status-failed/30 bg-status-failed/10 px-3 py-2 text-sm text-status-failed">{error}</p>}
+        <Button
           type="button"
+          size="lg"
           disabled={signingIn}
-          className="min-h-11 w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:cursor-wait disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          aria-busy={signingIn}
+          className="min-h-11 w-full disabled:cursor-wait"
           onClick={async () => {
             setSigningIn(true);
             try { await signIn(); } finally { setSigningIn(false); }
           }}
         >
           {signingIn ? "Opening Google sign-in…" : "Sign in with Google"}
-        </button>
+        </Button>
+        <p className="text-xs leading-relaxed text-muted-foreground">Only team members listed by the project can open the workspace.</p>
       </section>
     </main>
   );
