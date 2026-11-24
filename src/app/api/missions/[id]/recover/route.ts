@@ -7,7 +7,7 @@ import { draftRecovery } from "@/lib/server/google/recovery";
 import { HttpError, handle, readBody, str } from "@/lib/server/http";
 import { isFresh, newTaskRequest, pendingProposal, recoveryInput, saveRecovery } from "@/lib/server/orchestrator";
 import { addEvent, parseTaskId } from "@/lib/server/tasks";
-import { requireTeamUser } from "@/lib/server/team-auth";
+import { assertInProject, requireProjectMember } from "@/lib/server/team-auth";
 
 export const maxDuration = 60; // the Gemini call can take a while
 
@@ -16,12 +16,13 @@ export const maxDuration = 60; // the Gemini call can take a while
 // AI_PROVIDER=claude-code: opens a recovery request for an orchestrator agent ({ requested: true });
 // it submits the draft with POST /api/tasks/:id/recovery. AI_PROVIDER=gemini: Gemini drafts it now.
 export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
-  const user = await requireTeamUser(req);
+  const user = await requireProjectMember(req);
   const missionId = parseTaskId((await ctx.params).id);
   const taskId = parseTaskId(str(await readBody(req), "task_id", { max: 128 }));
 
   const snap = await col.tasks().doc(taskId).get();
-  if (!snap.exists || snap.get("mission_id") !== missionId) throw new HttpError(404, "Task not found in this mission");
+  assertInProject(snap, user.projectId, "Task not found in this mission");
+  if (snap.get("mission_id") !== missionId) throw new HttpError(404, "Task not found in this mission");
   const t = snap.data()!;
   if (t.status !== "failed") throw new HttpError(409, `Task is "${t.status}"; only failed tasks can be recovered`);
   const pending = await pendingProposal(taskId);
@@ -37,7 +38,7 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
         throw new HttpError(409, `A recovery is already requested${open.claimed_by_name ? ` (${open.claimed_by_name} is on it)` : ""}`);
       }
       tx.update(snap.ref, { orchestrator_request: newTaskRequest("recovery", user.email, now), updated_at: now });
-      addEvent(tx, { type: "recovery_requested", task_id: taskId, mission_id: missionId, message: "Recovery requested from the orchestrator", data: { by: user.email } }, now);
+      addEvent(tx, { project_id: user.projectId, type: "recovery_requested", task_id: taskId, mission_id: missionId, message: "Recovery requested from the orchestrator", data: { by: user.email } }, now);
     });
     return NextResponse.json<RecoverResponse>({ requested: true });
   }
@@ -45,7 +46,7 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
   // External call: outside any transaction (AGENTS.md correctness rules).
   const draft = await draftRecovery(await recoveryInput(taskId, t));
   await saveRecovery({
-    missionId, failedId: taskId, kind: draft.kind, task: draft.task, model: draft.model,
+    projectId: user.projectId, missionId, failedId: taskId, kind: draft.kind, task: draft.task, model: draft.model,
     by: user.email, agentId: null, createdBy: "gemini-recovery",
   });
   return NextResponse.json<RecoverResponse>({ task_id: draft.task.id, kind: draft.kind });

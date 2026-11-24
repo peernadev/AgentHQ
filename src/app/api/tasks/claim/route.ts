@@ -13,10 +13,10 @@ export const POST = handle(async (req: Request) => {
   // Optional { mission_id }: claim only within that mission (hq claim --mission <id>).
   const missionId = optStr(await readBody(req, { optional: true }), "mission_id", { max: 128 }) ?? null;
   if (missionId && !/^[A-Za-z0-9_-]+$/.test(missionId)) throw new HttpError(400, `"mission_id" is not a valid id`);
-  const res = await claimNextTask(agent.id, missionId);
+  const res = await claimNextTask(agent.id, agent.project_id, missionId);
   if (res.task) {
     // Best effort, after the transaction: a failed briefing never loses the claim.
-    res.since_last_claim = await sinceLastClaim(agent.id, res.task.id).catch((err) => {
+    res.since_last_claim = await sinceLastClaim(agent.id, agent.project_id, res.task.id).catch((err) => {
       console.error("since_last_claim failed", err);
       return [];
     });

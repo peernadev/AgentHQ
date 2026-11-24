@@ -8,7 +8,7 @@ import { reviewTask, rulesReview, type ReviewInput } from "@/lib/server/google/r
 import { HttpError, handle, readBody, str } from "@/lib/server/http";
 import { newTaskRequest } from "@/lib/server/orchestrator";
 import { addEvent, parseTaskId } from "@/lib/server/tasks";
-import { requireTeamUser } from "@/lib/server/team-auth";
+import { assertInProject, requireProjectMember } from "@/lib/server/team-auth";
 
 export const maxDuration = 60; // the Gemini call can take a while
 
@@ -20,12 +20,13 @@ const sameSha = (a: string, b: string) => a.startsWith(b) || b.startsWith(a);
 // AI_PROVIDER=claude-code: saves the rules-only review now and, if checks passed, requests a Claude
 // review from an orchestrator agent (POST /api/tasks/:id/verdict replaces it). gemini: Gemini reviews.
 export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
-  const user = await requireTeamUser(req);
+  const user = await requireProjectMember(req);
   const missionId = parseTaskId((await ctx.params).id);
   const taskId = parseTaskId(str(await readBody(req), "task_id", { max: 128 }));
 
   const snap = await col.tasks().doc(taskId).get();
-  if (!snap.exists || snap.get("mission_id") !== missionId) throw new HttpError(404, "Task not found in this mission");
+  assertInProject(snap, user.projectId, "Task not found in this mission");
+  if (snap.get("mission_id") !== missionId) throw new HttpError(404, "Task not found in this mission");
   const t = snap.data()!;
   if (t.status !== "in_review") throw new HttpError(409, `Task is "${t.status}"; only in_review tasks can be reviewed`);
   if (!t.pr_url || !t.head_sha || !t.checks) throw new HttpError(409, "Task has no PR evidence yet (pr_url, head_sha, checks)");
@@ -57,11 +58,11 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
       ...(requested ? { orchestrator_request: newTaskRequest("review", user.email, now, headSha) } : {}),
     });
     addEvent(tx, {
-      type: "reviewed", task_id: taskId, mission_id: missionId,
+      project_id: user.projectId, type: "reviewed", task_id: taskId, mission_id: missionId,
       message: `${review.verdict}: ${review.notes}`,
       data: { verdict: review.verdict, sha: headSha, model: review.model, by: user.email },
     }, now);
-    if (requested) addEvent(tx, { type: "review_requested", task_id: taskId, mission_id: missionId, message: "Claude review requested from the orchestrator", data: { sha: headSha, by: user.email } }, now);
+    if (requested) addEvent(tx, { project_id: user.projectId, type: "review_requested", task_id: taskId, mission_id: missionId, message: "Claude review requested from the orchestrator", data: { sha: headSha, by: user.email } }, now);
   });
   return NextResponse.json<ReviewTaskResponse>({ review, ...(requested ? { requested: true } : {}) });
 });

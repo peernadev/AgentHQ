@@ -31,7 +31,7 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
   await mutateOwnTask(agent, id, attemptId, ACTIVE, (tx, task, now) => {
     tx.update(col.agents().doc(agent.id), { status: "idle", current_task_id: null, note: null });
     addEvent(tx, {
-      type: "pr_opened", task_id: id, agent_id: agent.id, mission_id: task.mission_id ?? null,
+      project_id: agent.project_id, type: "pr_opened", task_id: id, agent_id: agent.id, mission_id: task.mission_id ?? null,
       message: task.title, data: { pr_url, branch, head_sha, checks },
     }, now);
     // The lease ends here; the lock in meta/scopeRegistry stays until done.

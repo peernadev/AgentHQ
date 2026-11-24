@@ -14,7 +14,7 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
 
   await mutateOwnTask(agent, id, attemptId, ACTIVE, (tx, task, now) => {
     tx.update(col.agents().doc(agent.id), { status: "working", note: message });
-    addEvent(tx, { type: "progress", task_id: id, agent_id: agent.id, mission_id: task.mission_id ?? null, message }, now);
+    addEvent(tx, { project_id: agent.project_id, type: "progress", task_id: id, agent_id: agent.id, mission_id: task.mission_id ?? null, message }, now);
     return { status: "in_progress", lease_expires_at: leaseFrom(now) };
   });
   return agentJson(agent.id, { ok: true });

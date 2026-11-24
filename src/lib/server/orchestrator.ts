@@ -52,10 +52,11 @@ export async function lastFailure(taskId: string): Promise<{ reason: string; log
 
 /** What validating a recovery draft needs: the failed task, its failure, the open queue and the locks. */
 export async function recoveryInput(taskId: string, t: FirebaseFirestore.DocumentData): Promise<RecoveryInput> {
+  const projectId = String(t.project_id);
   const [failure, queueSnap, registry] = await Promise.all([
     lastFailure(taskId),
-    col.tasks().where("status", "in", OPEN).select().limit(500).get(),
-    col.scopeRegistry().get(),
+    col.tasks().where("project_id", "==", projectId).where("status", "in", OPEN).select().limit(500).get(),
+    col.scopeRegistry(projectId).get(),
   ]);
   return {
     failed: { id: taskId, title: t.title, description: t.description, acceptance: t.acceptance ?? null, scope: t.scope ?? [], size: (t.size ?? "M") as TaskSize },
@@ -71,21 +72,22 @@ export async function recoveryInput(taskId: string, t: FirebaseFirestore.Documen
  * open orchestrator recovery request. `guard` runs inside the transaction for extra checks.
  */
 export async function saveRecovery(p: {
-  missionId: string; failedId: string; kind: "fix" | "prerequisite"; task: ParsedTask;
+  projectId: string; missionId: string; failedId: string; kind: "fix" | "prerequisite"; task: ParsedTask;
   model: string; by: string; agentId: string | null; createdBy: string;
   guard?: (cur: FirebaseFirestore.DocumentSnapshot, now: Timestamp) => void;
 }): Promise<void> {
   await getDb().runTransaction(async (tx) => {
     const ref = col.tasks().doc(p.failedId);
-    const [cur, again, draftCtx] = await Promise.all([tx.get(ref), pendingProposal(p.failedId, tx), readDraftContext(tx, [p.task])]);
+    const [cur, again, draftCtx] = await Promise.all([tx.get(ref), pendingProposal(p.failedId, tx), readDraftContext(tx, [p.task], p.projectId)]);
     const now = Timestamp.now();
+    if (cur.get("project_id") !== p.projectId) throw new HttpError(404, "Task not found");
     if (cur.get("status") !== "failed") throw new HttpError(409, "The task is no longer failed; recovery discarded");
     if (again) throw new HttpError(409, `A recovery draft for this task already exists: ${again}`);
     p.guard?.(cur, now);
-    writeDraftTasks(tx, [p.task], draftCtx, { missionId: p.missionId, createdBy: p.createdBy, agentId: p.agentId }, now);
+    writeDraftTasks(tx, [p.task], draftCtx, { projectId: p.projectId, missionId: p.missionId, createdBy: p.createdBy, agentId: p.agentId }, now);
     if (cur.get("orchestrator_request")) tx.update(ref, { orchestrator_request: null, updated_at: now });
     addEvent(tx, {
-      type: "recovery_proposed", task_id: p.failedId, mission_id: p.missionId, agent_id: p.agentId,
+      project_id: p.projectId, type: "recovery_proposed", task_id: p.failedId, mission_id: p.missionId, agent_id: p.agentId,
       message: `${p.kind === "fix" ? "Fix" : "Prerequisite"} proposed: ${p.task.title}`,
       data: { failed_task_id: p.failedId, draft_task_id: p.task.id, kind: p.kind, model: p.model, by: p.by },
     }, now);

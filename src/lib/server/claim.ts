@@ -11,25 +11,26 @@ const points = (size: unknown) => TASK_POINTS[size as TaskSize] ?? TASK_POINTS.M
 const ms = (t: unknown) => (t instanceof Timestamp ? t.toMillis() : 0);
 
 /**
- * SPEC §6: one transaction that releases expired leases, applies the fairness rule and
- * claims the best task. Every claim reads and writes meta/scopeRegistry, so claims are
- * serialized. Queries filter on status only (no composite index); sorting is done here.
+ * SPEC §6: one transaction, scoped to the agent's project, that releases expired leases, applies
+ * the fairness rule and claims the best task. Every claim reads and writes its project's
+ * scopeRegistries/{projectId}, so claims within a project are serialized; projects never see or
+ * block each other. Sorting is done here (indexes: tasks(project_id, status)).
  */
-export async function claimNextTask(agentId: string, missionId: string | null = null): Promise<ClaimResponse> {
+export async function claimNextTask(agentId: string, projectId: string, missionId: string | null = null): Promise<ClaimResponse> {
   return getDb().runTransaction(async (tx) => {
     // ---- reads (Firestore requires all reads before any write) ----
     const [registry, agentsSnap, participantsSnap, queuedSnap, activeSnap] = await Promise.all([
-      tx.get(col.scopeRegistry()),
-      tx.get(col.agents()),
-      tx.get(col.participants()),
-      tx.get(col.tasks().where("status", "==", "queued")),
-      tx.get(col.tasks().where("status", "in", ACTIVE)),
+      tx.get(col.scopeRegistry(projectId)),
+      tx.get(col.agents().where("project_id", "==", projectId)),
+      tx.get(col.participants().where("project_id", "==", projectId)),
+      tx.get(col.tasks().where("project_id", "==", projectId).where("status", "==", "queued")),
+      tx.get(col.tasks().where("project_id", "==", projectId).where("status", "in", ACTIVE)),
     ]);
     // Active tasks too: one whose lease expired below is released and claimable in this same round.
     const depIds = [...new Set([...queuedSnap.docs, ...activeSnap.docs]
       .flatMap((d) => (d.get("depends_on") ?? []) as string[]))];
     const depSnaps = depIds.length ? await tx.getAll(...depIds.map((id) => col.tasks().doc(id))) : [];
-    const depDone = new Set(depSnaps.filter((s) => s.exists && s.get("status") === "done").map((s) => s.id));
+    const depDone = new Set(depSnaps.filter((s) => s.exists && s.get("project_id") === projectId && s.get("status") === "done").map((s) => s.id));
 
     const now = Timestamp.now();
     const locks: Record<string, string[]> = { ...(registry.get("locks") ?? {}) };
@@ -38,10 +39,10 @@ export async function claimNextTask(agentId: string, missionId: string | null = 
     const touchedAgents = new Set<string>();
     const touchedParticipants = new Set<string>();
     const me = agents.get(agentId);
-    if (!me) throw new HttpError(401, "Unknown agent");
+    if (!me) throw new HttpError(401, "Unknown agent in this project");
 
     const finish = (res: ClaimResponse): ClaimResponse => {
-      tx.set(col.scopeRegistry(), { locks, updated_at: now });
+      tx.set(col.scopeRegistry(projectId), { project_id: projectId, locks, updated_at: now });
       for (const id of touchedAgents) {
         const a = agents.get(id)!;
         tx.update(col.agents().doc(id), { status: a.status, current_task_id: a.current_task_id ?? null });
@@ -80,7 +81,7 @@ export async function claimNextTask(agentId: string, missionId: string | null = 
         setAgent(holder, { status: "offline", current_task_id: null });
       }
       addEvent(tx, {
-        type: "released", task_id: t.id, agent_id: holder, mission_id: t.get("mission_id") ?? null,
+        project_id: projectId, type: "released", task_id: t.id, agent_id: holder, mission_id: t.get("mission_id") ?? null,
         message: "Lease expired; task returned to queue",
       }, now);
     }
@@ -98,7 +99,7 @@ export async function claimNextTask(agentId: string, missionId: string | null = 
     if ((pts.get(me.participant_id) ?? 0) > avg + 2 && teammateIdle) {
       setAgent(agentId, { status: "idle", current_task_id: null });
       addEvent(tx, {
-        type: "fairness_skip", agent_id: agentId,
+        project_id: projectId, type: "fairness_skip", agent_id: agentId,
         message: "Ahead of the team on workload; leaving the next task for a teammate",
       }, now);
       return finish({ task: null, reason: "fairness" });
@@ -130,7 +131,7 @@ export async function claimNextTask(agentId: string, missionId: string | null = 
     setAgent(agentId, { status: "working", current_task_id: pick.id });
     // +1 ms so the activity feed always shows a same-round "released" before this "claimed".
     addEvent(tx, {
-      type: "claimed", task_id: pick.id, agent_id: agentId, mission_id: pick.get("mission_id") ?? null,
+      project_id: projectId, type: "claimed", task_id: pick.id, agent_id: agentId, mission_id: pick.get("mission_id") ?? null,
       message: pick.get("title"),
     }, Timestamp.fromMillis(now.toMillis() + 1));
     return finish({ task: { ...fromDoc<Task>(pick), ...(toIso(claim) as Partial<Task>) } });

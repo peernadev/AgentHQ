@@ -29,6 +29,7 @@ export function scopesOverlap(a: string[], b: string[]): boolean {
 }
 
 type EventInput = {
+  project_id: string;  // required: every event belongs to one project
   type: string; task_id?: string | null; agent_id?: string | null; mission_id?: string | null;
   message?: string | null; data?: Record<string, unknown> | null;
 };
@@ -44,15 +45,18 @@ export function addEvent(tx: Transaction, e: EventInput, now = Timestamp.now()) 
  * Reads what saving a draft batch needs (Firestore: all reads before writes) and checks that
  * `depends_on` ids outside the batch exist. Returns the priority to count up from.
  */
-export async function readDraftContext(tx: Transaction, tasks: ParsedTask[]): Promise<{ lastPriority: number }> {
+export async function readDraftContext(tx: Transaction, tasks: ParsedTask[], projectId: string): Promise<{ lastPriority: number }> {
   const existingDeps = [...new Set(tasks.flatMap((t) => t.existing_deps))];
+  // Highest priority in the project: read priorities only and take the max here, so this needs no
+  // composite index (an equality filter is served by Firestore's automatic single-field indexes).
   const [top, deps] = await Promise.all([
-    tx.get(col.tasks().orderBy("priority", "desc").limit(1)),
+    tx.get(col.tasks().where("project_id", "==", projectId).select("priority")),
     existingDeps.length ? tx.getAll(...existingDeps.map((id) => col.tasks().doc(id))) : [],
   ]);
-  const missing = deps.filter((d) => !d.exists).map((d) => d.id);
+  // A dependency in another project is treated as unknown: projects never see each other's tasks.
+  const missing = deps.filter((d) => !d.exists || d.get("project_id") !== projectId).map((d) => d.id);
   if (missing.length) throw new HttpError(400, `depends_on: unknown task ids ${missing.join(", ")}`);
-  return { lastPriority: Number(top.docs[0]?.get("priority") ?? 0) };
+  return { lastPriority: top.docs.reduce((max, d) => Math.max(max, Number(d.get("priority") ?? 0)), 0) };
 }
 
 /** Writes a validated batch as drafts plus one `created` event each. Missing priorities go last, in batch order. */
@@ -60,24 +64,24 @@ export function writeDraftTasks(
   tx: Transaction,
   tasks: ParsedTask[],
   ctx: { lastPriority: number },
-  meta: { missionId: string | null; createdBy: string; agentId: string | null },
+  meta: { projectId: string; missionId: string | null; createdBy: string; agentId: string | null },
   now = Timestamp.now(),
 ) {
   let next = ctx.lastPriority;
   for (const t of tasks) {
     tx.create(col.tasks().doc(t.id), {
-      mission_id: meta.missionId, title: t.title, description: t.description, acceptance: t.acceptance ?? null,
+      project_id: meta.projectId, mission_id: meta.missionId, title: t.title, description: t.description, acceptance: t.acceptance ?? null,
       priority: t.priority ?? (next += 10), size: t.size, scope: t.scope, depends_on: t.depends_on, status: "draft",
       agent_id: null, attempt_id: null, lease_expires_at: null, branch: null, pr_url: null, head_sha: null,
       checks: null, review: null, result_summary: null, created_by: meta.createdBy,
       claimed_at: null, completed_at: null, created_at: now, updated_at: now,
     });
-    addEvent(tx, { type: "created", task_id: t.id, agent_id: meta.agentId, mission_id: meta.missionId, message: t.title }, now);
+    addEvent(tx, { project_id: meta.projectId, type: "created", task_id: t.id, agent_id: meta.agentId, mission_id: meta.missionId, message: t.title }, now);
   }
 }
 
 /** What a mission's status update needs, read in the transaction's read phase. */
-export interface MissionRead { id: string; current: MissionStatus; statuses: Map<string, string> }
+export interface MissionRead { id: string; projectId: string; current: MissionStatus; statuses: Map<string, string> }
 
 /** Reads a mission and its tasks (reads only). null if there's no mission. */
 export async function readMission(tx: Transaction, missionId: string | null | undefined): Promise<MissionRead | null> {
@@ -88,7 +92,7 @@ export async function readMission(tx: Transaction, missionId: string | null | un
   ]);
   if (!mission.exists) return null;
   return {
-    id: missionId, current: mission.get("status") as MissionStatus,
+    id: missionId, projectId: mission.get("project_id") as string, current: mission.get("status") as MissionStatus,
     statuses: new Map(tasks.docs.map((d) => [d.id, d.get("status") as string])),
   };
 }
@@ -101,7 +105,7 @@ export function writeMissionStatus(tx: Transaction, m: MissionRead | null, chang
   const next = deriveMissionStatus([...statuses.values()], m.current);
   if (next === m.current) return;
   tx.update(col.missions().doc(m.id), { status: next });
-  addEvent(tx, { type: "mission_status", mission_id: m.id, message: next, data: { from: m.current, to: next } }, now);
+  addEvent(tx, { project_id: m.projectId, type: "mission_status", mission_id: m.id, message: next, data: { from: m.current, to: next } }, now);
 }
 
 /**

@@ -24,7 +24,7 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
   const sha = str(body, "sha", { max: 40 }).toLowerCase();
 
   const snap = await col.tasks().doc(taskId).get();
-  if (!snap.exists) throw new HttpError(404, "Task not found");
+  if (!snap.exists || snap.get("project_id") !== agent.project_id) throw new HttpError(404, "Task not found");
   const t = snap.data()!;
   if (t.status !== "in_review") throw new HttpError(409, `Task is "${t.status}"; only in_review tasks can be reviewed`);
   const headSha = String(t.head_sha ?? "");
@@ -59,7 +59,7 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
     if (!mayTake(open, agent.id, now)) throw new HttpError(409, `${open.claimed_by_name ?? "Another orchestrator"} is reviewing this PR`);
     tx.update(snap.ref, { review: { ...review, reviewed_at: now }, orchestrator_request: null, updated_at: now });
     addEvent(tx, {
-      type: "reviewed", task_id: taskId, mission_id: t.mission_id ?? null, agent_id: agent.id,
+      project_id: agent.project_id, type: "reviewed", task_id: taskId, mission_id: t.mission_id ?? null, agent_id: agent.id,
       message: `${review.verdict}: ${review.notes}`,
       data: { verdict: review.verdict, sha: headSha, model: review.model, by: agent.name },
     }, now);

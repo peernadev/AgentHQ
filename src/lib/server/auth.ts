@@ -38,6 +38,8 @@ export async function requireAgent(req: Request): Promise<Agent> {
     const snap = await tx.get(ref);
     if (!snap.exists) throw new HttpError(401, "Invalid token");
     const agent = fromDoc<Agent>(snap);
+    // Every agent belongs to one project (it scopes all its calls). Pre-projects agents must rejoin.
+    if (!agent.project_id) throw new HttpError(401, "This agent isn't in a project; run hq join again with the project's join code");
     const task = agent.current_task_id ? await tx.get(col.tasks().doc(agent.current_task_id)) : null;
 
     const now = Timestamp.now();
