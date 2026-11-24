@@ -2,7 +2,7 @@
 
 import { useEffect, useReducer, useRef, useState } from "react";
 import type { User } from "firebase/auth";
-import { collection, onSnapshot, Timestamp, type DocumentData, type QuerySnapshot } from "firebase/firestore";
+import { collection, onSnapshot, query, Timestamp, where, type DocumentData, type QuerySnapshot } from "firebase/firestore";
 import { apiRequest } from "@/lib/client/api-client";
 import { useFirebaseAuth } from "@/lib/client/auth-provider";
 import { getFirebaseClient } from "@/lib/client/firebase";
@@ -80,7 +80,8 @@ const byPriority = (a: Task, b: Task) => a.priority - b.priority || a.id.localeC
 const cancelled = () => new Error("Your sign-in session changed. Please try again after signing in.");
 
 /** Live reads only. Authenticated server routes own every operational mutation. */
-export function useMissionData() {
+/** Live data for one project: every listener is filtered by project_id; API calls send X-Project-Id. */
+export function useMissionData(projectId: string) {
   const { user, loading: authLoading, error: authError } = useFirebaseAuth();
   const [state, update] = useReducer(reducer, null, () => emptyState());
   const [run, setRun] = useState(0);
@@ -120,7 +121,7 @@ export function useMissionData() {
           });
         };
         try {
-          session.unsubscribe.push(onSnapshot(collection(db, name), snapshot => {
+          session.unsubscribe.push(onSnapshot(query(collection(db, name), where("project_id", "==", projectId)), snapshot => {
             if (!alive()) return;
             const rows = documents<Collections[K][number]>(snapshot);
             update(current => {
@@ -162,7 +163,7 @@ export function useMissionData() {
       if (sessionRef.current === session) sessionRef.current = null;
       update(current => current.session === session ? emptyState() : current);
     };
-  }, [user, authLoading, run]);
+  }, [user, authLoading, run, projectId]);
 
   // Hide the previous session during the render before its effect cleanup runs.
   const view = user && !authLoading && state.session?.user === user && state.session.run === run ? state : emptyState();
@@ -235,7 +236,7 @@ export function useMissionData() {
     const operation = begin("planning");
     try {
       const response = await apiRequest<CreateMissionResponse>(session.user, "/api/missions", {
-        method: "POST", body: { title, goal }, signal: operation.controller.signal,
+        method: "POST", body: { title, goal }, signal: operation.controller.signal, projectId,
       });
       if (!operationCurrent(operation)) throw cancelled();
       const cached = response.cached_plan === true || response.mission.plan_source === "cached_demo";
@@ -262,7 +263,7 @@ export function useMissionData() {
     const operation = begin("approving", ids.length === 1 ? ids[0] : null);
     try {
       await apiRequest<{ ok: boolean }>(operation.session.user, "/api/tasks/approve", {
-        method: "POST", body: { ids }, signal: operation.controller.signal,
+        method: "POST", body: { ids }, signal: operation.controller.signal, projectId,
       });
       if (!operationCurrent(operation)) throw cancelled();
       patch(operation.session, { announcement: `${ids.length} ${ids.length === 1 ? "draft approved" : "drafts approved"} and added to the queue.` });
@@ -288,7 +289,7 @@ export function useMissionData() {
     const operation = begin("task", taskId);
     try {
       await apiRequest<{ ok: boolean }>(operation.session.user, `/api/tasks/${encodeURIComponent(taskId)}/done`, {
-        method: "POST", body: {}, signal: operation.controller.signal,
+        method: "POST", body: {}, signal: operation.controller.signal, projectId,
       });
       if (!operationCurrent(operation)) throw cancelled();
       patch(operation.session, { announcement: "Task marked done. Its scope lock has been released by the server." });
@@ -302,7 +303,7 @@ export function useMissionData() {
     const operation = begin("task", taskId);
     try {
       const response = await apiRequest<ReviewTaskResponse>(operation.session.user, `/api/missions/${encodeURIComponent(task.mission_id!)}/review-task`, {
-        method: "POST", body: { task_id: taskId }, signal: operation.controller.signal,
+        method: "POST", body: { task_id: taskId }, signal: operation.controller.signal, projectId,
       });
       if (!operationCurrent(operation)) throw cancelled();
       patch(operation.session, { announcement: "Review saved with evidence for the submitted head SHA." });
@@ -317,7 +318,7 @@ export function useMissionData() {
     const operation = begin("task", taskId);
     try {
       const response = await apiRequest<RecoverResponse>(operation.session.user, `/api/missions/${encodeURIComponent(task.mission_id!)}/recover`, {
-        method: "POST", body: { task_id: taskId }, signal: operation.controller.signal,
+        method: "POST", body: { task_id: taskId }, signal: operation.controller.signal, projectId,
       });
       if (!operationCurrent(operation)) throw cancelled();
       // claude-code: the orchestrator drafts it later; stay on the failed task.

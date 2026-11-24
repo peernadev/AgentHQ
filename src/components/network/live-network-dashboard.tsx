@@ -1,7 +1,9 @@
 "use client";
 
 // Main dashboard (/): the network layout from /lab/network on live Firestore data (useMissionData).
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
 import { ArrowRight, Check, Plus, RotateCcw, Server, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { AgentHQMark } from "@/components/agenthq-mark";
@@ -9,6 +11,7 @@ import { MissionCreator } from "@/components/mission-creator";
 import { Network, TaskEvidence, WorkerStatus, age, assignedTask, missionLabels, taskLabels } from "@/components/network/network-parts";
 import { useFirebaseAuth } from "@/lib/client/auth-provider";
 import { useMissionData } from "@/lib/client/use-mission-data";
+import { rememberProject, useMe } from "@/lib/client/use-me";
 import { PLAN_CLAIM_MINUTES, type Agent, type Mission, type Task } from "@/types/api";
 import styles from "../agent-network-dashboard.module.css";
 
@@ -96,7 +99,12 @@ function pendingRecovery(board: Board, task: Task): Task | null {
 }
 
 export function LiveNetworkDashboard() {
-  const board = useMissionData();
+  const { projectId } = useParams<{ projectId: string }>();
+  const router = useRouter();
+  const { me } = useMe();
+  const membership = me?.projects.find((item) => item.project.id === projectId) ?? null;
+  const board = useMissionData(projectId);
+  useEffect(() => { if (membership) rememberProject(projectId); }, [membership, projectId]);
   const { user, signOut } = useFirebaseAuth();
   const [section, setSection] = useState<Section>("agents");
   const [selected, setSelected] = useState("server");
@@ -260,13 +268,27 @@ export function LiveNetworkDashboard() {
 
   const selectedAgent = board.agents.find(agent => agent.id === selected);
   const header = <header className={`${styles.topbar} bg-hex`}>
-    <span className={styles.brand}><AgentHQMark /><span>AgentHQ</span></span>
-    <span className={styles.previewLabel}>Mission control</span>
+    <Link href="/" className={styles.brand}><AgentHQMark /><span>AgentHQ</span></Link>
+    <span className={styles.projectSwitch}>
+      <label className={styles.srOnly} htmlFor="project-switch">Project</label>
+      <select id="project-switch" value={projectId} onChange={(event) => router.push(`/p/${event.target.value}`)} disabled={!me}>
+        {!membership && <option value={projectId}>{me ? "Unknown project" : "Loading…"}</option>}
+        {me?.projects.map(({ project }) => <option key={project.id} value={project.id}>{project.name}</option>)}
+      </select>
+      <Link href="/">All projects</Link>
+    </span>
     <div className={styles.topbarEnd}>
       <span className={`${styles.liveBadge} ${board.error ? styles.offlineBadge : ""}`}><i aria-hidden="true" />{board.loading ? "Connecting…" : board.error ? "Connection issue" : "Live"}</span>
       <span className={styles.userMenu}><span>{user?.email}</span><button onClick={async () => { setSignOutError(""); try { await signOut(); } catch { setSignOutError("Could not sign out. Try again."); } }}>Sign out</button></span>
     </div>
   </header>;
+
+  if (me && !membership) {
+    return <main className={`${styles.root} ${styles.live}`}>
+      {header}
+      <div className={styles.page}><div className={styles.empty}><Server size={30} aria-hidden="true" /><h3>You don&apos;t have access to this project</h3><p>Ask one of its owners to add {me.email} on the project&apos;s Team page.</p><Link className={styles.secondary} href="/">All projects</Link></div></div>
+    </main>;
+  }
 
   return <main className={`${styles.root} ${styles.orbit} ${styles.live}`}>
     {header}
