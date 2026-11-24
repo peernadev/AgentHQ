@@ -25,7 +25,9 @@ const USAGE = `Usage: hq <command>
   fail <id> "reason" [--no-checks]
                                attaches the last ${LOG_LINES} lines of the failing check
   status [--json]
-  plan-requests [--json]       orchestrator: take the next open plan request (claims it), or NO_REQUEST
+  plan-requests [--json] [--wait <seconds>]
+                               orchestrator: take the next open plan request (claims it), or NO_REQUEST;
+                               --wait polls every 30 s (each poll is a heartbeat) until one arrives
   tasks add [--mission <id>] plan.json
                                orchestrator: submit drafts ({ tasks: [...] } or [...]); with --mission
                                for a planning mission, the plan is validated and the request closed
@@ -284,9 +286,17 @@ const commands = {
   },
 
   async "plan-requests"(argv) {
-    const { values: v } = parseArgs({ args: argv, options: { json: { type: "boolean" } } });
-    const res = await api(loadConfig(), "GET", "/api/plan-requests");
-    const [r] = res.requests ?? [];
+    const { values: v } = parseArgs({ args: argv, options: { json: { type: "boolean" }, wait: { type: "string" } } });
+    const waitMs = Math.max(0, Number(v.wait ?? 0) * 1000);
+    if (!Number.isFinite(waitMs)) die("--wait takes a number of seconds");
+    const until = Date.now() + waitMs;
+    let r;
+    for (;;) {
+      const res = await api(loadConfig(), "GET", "/api/plan-requests");
+      [r] = res.requests ?? [];
+      if (r || Date.now() + 30_000 > until) break;
+      await new Promise((resolve) => setTimeout(resolve, 30_000));
+    }
     if (v.json) return console.log(JSON.stringify(r ?? null, null, 2));
     if (!r) return console.log("NO_REQUEST");
     console.log(`PLAN REQUEST ${r.mission_id}

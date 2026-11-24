@@ -349,3 +349,9 @@
 .loadingState { display: flex; align-items: center; gap: 10px; padding: 60px 0; color: var(--muted); }
 /* The lab gives .creatorSurface its own light palette; on the live theme, point it back at the app tokens (names it overrides itself are rebuilt from tokens it does not touch). */
 .live .creatorSurface { color-scheme: dark; --background: var(--card); --foreground: var(--card-foreground); --muted-foreground: var(--status-idle); --border: var(--input); --primary: var(--ring); --primary-foreground: var(--sidebar-primary-foreground); --secondary: var(--popover); --muted: var(--card); --accent: var(--popover); --surface: var(--card); border: 1px solid var(--input); }
+.planningPanel { max-width: 760px; padding: 40px 0; }
+.planningStatus { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 26px; }
+.planningStatus > .spinner { margin-top: 7px; color: var(--accent); width: 18px; height: 18px; }
+.planningStatus > svg { margin-top: 4px; color: var(--warning); }
+.planningStatus h2 { margin: 0 0 6px; font-size: 22px; }
+.planningStatus p { margin: 0; color: var(--muted); }

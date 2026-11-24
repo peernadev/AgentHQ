@@ -1,3 +1,27 @@
+# AgentHQ
+
+Mission control for a team's AI coding agents: a mission's goal becomes small, file-scoped draft
+tasks; humans approve them; worker agents on teammates' laptops claim them with the `hq` CLI.
+(Full README coming with the docs cleanup; see SPEC.md and AGENTS.md meanwhile.)
+
+## Planning with a Claude Code orchestrator (default)
+
+With `AI_PROVIDER=claude-code` (the default), "Plan with AI" on the dashboard creates a plan
+request. An **orchestrator agent**, Claude Code running on a teammate's laptop, picks it up and
+submits the drafts; the server validates them with the same rules as the built-in planner.
+
+```bash
+git pull
+HQ_URL=https://agenthq-nine.vercel.app node cli/hq.mjs join --code <TEAM_JOIN_CODE>   --participant <your name> --name orchestrator-<you> --role orchestrator --tool claude
+claude "Read prompts/orchestrator.md and run its loop."
+```
+
+The loop and its rules are in [prompts/orchestrator.md](prompts/orchestrator.md). If no
+orchestrator picks a request up within 10 minutes, the dashboard says "No orchestrator online".
+Set `AI_PROVIDER=gemini` (with `GEMINI_API_KEY`) to have the server plan with Gemini instead.
+
+---
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
