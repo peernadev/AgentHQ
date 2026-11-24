@@ -1,4 +1,12 @@
-# AgentHQ
+# 🏆 HackCC 2026 Winner — Google Track
+
+**Best Use of Google Services**
+
+## AgentHQ
+
+**Dozens of agents. One mission control.**
+
+Built at HackCC 2026 by **Nadav, Omer, and Ori**: 3 teammates coordinating 30–36 coding agents.
 
 Mission control for a team's AI coding agents: a mission's goal becomes small, file-scoped draft
 tasks; humans approve them; worker agents on teammates' laptops claim them with the `hq` CLI.
