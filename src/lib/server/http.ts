@@ -1,4 +1,5 @@
 import "server-only";
+import { unstable_rethrow } from "next/navigation";
 import { NextResponse } from "next/server";
 
 // Small helpers shared by the API route handlers.
@@ -20,6 +21,9 @@ export function handle<A extends unknown[]>(fn: (...args: A) => Promise<Response
     try {
       return await fn(...args);
     } catch (err) {
+      // Next's own control-flow errors (e.g. the prerender bailout when a GET handler reads
+      // request headers under cacheComponents) must reach Next untouched, not become a 500.
+      unstable_rethrow(err);
       if (err instanceof HttpError) return jsonError(err.status, err.message);
       console.error(err);
       return jsonError(500, "Internal server error");

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
 import type { CreateMissionResponse, Mission } from "@/types/api";
+import { aiProvider } from "@/lib/server/ai-provider";
 import { col, getDb } from "@/lib/server/firebase-admin";
 import { cachedDemoPlan, planMission, PlannerBusyError, type QueueItem } from "@/lib/server/google/planner";
 import { handle, readBody, str } from "@/lib/server/http";
@@ -14,14 +15,32 @@ export const maxDuration = 60; // the Gemini call can take a while
 
 const OPEN = ["draft", "queued", "claimed", "in_progress", "in_review", "failed"];
 
-// POST /api/missions { title, goal }: dashboard (team member). Gemini drafts the tasks, then one
-// transaction saves the mission plus its draft tasks. Drive/Docs (source_doc_id,
-// google_access_token) are Phase 2: ignored here and never stored.
+// POST /api/missions { title, goal }: dashboard (team member). With AI_PROVIDER=claude-code (default)
+// it saves a "planning" mission (an open plan request for an orchestrator agent). With
+// AI_PROVIDER=gemini, Gemini drafts the tasks, then one transaction saves the mission plus its
+// drafts. Drive/Docs (source_doc_id, google_access_token) are future work: ignored, never stored.
 export const POST = handle(async (req: Request) => {
   const user = await requireTeamUser(req);
   const body = await readBody(req);
   const title = str(body, "title", { max: 200 });
   const goal = str(body, "goal", { max: 8000 });
+
+  // AI_PROVIDER=claude-code: save the mission as an open plan request; an orchestrator agent
+  // claims it via GET /api/plan-requests and submits drafts with POST /api/tasks. No AI call here.
+  if (aiProvider() === "claude-code") {
+    const missionId = randomUUID();
+    const now = Timestamp.now();
+    const mission = {
+      title, goal, source_doc_id: null, source_doc_url: null, plan_doc_url: null, handoff_doc_url: null,
+      status: "planning", created_by: user.email, created_at: now, plan_source: "orchestrator",
+      plan_requested_at: now, plan_claimed_by: null, plan_claimed_by_name: null, plan_claimed_at: null,
+    };
+    await getDb().runTransaction(async (tx) => {
+      tx.create(col.missions().doc(missionId), mission);
+      addEvent(tx, { type: "plan_requested", mission_id: missionId, message: "Waiting for an orchestrator to draft the plan", data: { by: user.email } }, now);
+    });
+    return NextResponse.json<CreateMissionResponse>({ mission: { id: missionId, ...(toIso(mission) as Omit<Mission, "id">) }, task_ids: [] });
+  }
 
   // Context for the planner (a snapshot; the transaction below re-checks dependencies).
   const [queueSnap, registry] = await Promise.all([

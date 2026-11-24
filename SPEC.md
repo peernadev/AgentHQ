@@ -64,7 +64,9 @@ agents/{id}         participant_id, name, machine, tool, model, role(worker|orch
                     status(idle|working|blocked|offline), current_task_id, note, last_heartbeat
 agentTokens/{sha}   agent_id                      (server-only, never readable by the browser)
 missions/{id}       title, goal, source_doc_id, source_doc_url, plan_doc_url, handoff_doc_url,
-                    status(planning|awaiting_approval|running|reviewing|done), created_by, created_at
+                    status(planning|awaiting_approval|running|reviewing|done), created_by, created_at,
+                    plan_source(gemini|cached_demo|orchestrator), plan_requested_at,
+                    plan_claimed_by, plan_claimed_by_name, plan_claimed_at   (plan request, AI_PROVIDER=claude-code)
 tasks/{id}          mission_id, title, description, acceptance, priority, size(S|M|L),
                     scope[], depends_on[], status(draft|queued|claimed|in_progress|in_review|done|failed|cancelled),
                     agent_id, attempt_id, lease_expires_at, branch, pr_url, head_sha,
@@ -99,7 +101,14 @@ which serializes claims (same role as the Postgres advisory lock).
   Commit an `outbox` record, then run the external action idempotently afterwards.
 - Composite index needed: tasks(status, priority). Firestore prints a create-index link the first time.
 
-## 7. AI roles (server-side; ADK in Phase 2)
+## 7. AI roles
+**AI_PROVIDER** = `claude-code` (default) or `gemini`. With `claude-code` the server makes no AI calls for
+planning: `POST /api/missions` saves a `planning` mission (an open plan request); an **orchestrator agent**
+(Claude Code running `prompts/orchestrator.md`) claims it with `GET /api/plan-requests` (one at a time, a claim
+lasts 10 min) and submits the plan with `POST /api/tasks { mission_id, tasks }`, which applies the same strict
+validation as below and moves the mission to `awaiting_approval`. Unclaimed for 10 min → the dashboard says
+"No orchestrator online"; the request stays open. With `gemini`, the server calls Gemini as described below.
+
 - **Planner:** input = brief text (cited), repo tree, AGENTS.md ownership, current queue
   and locks. Output = CreateTaskInput[] (JSON schema). Server validates: schema, no
   dependency cycles, real paths, non-overlapping parallel scopes. Tasks are saved as drafts.
@@ -131,11 +140,12 @@ Every successful agent-route response also carries `inbox`: the agent's unread m
 | POST | /api/messages | { to_agent (id or name) \| to_task, text } → { message_id, to_agent, to_name } | any agent |
 | GET | /api/messages | none → { inbox } | any agent |
 | POST | /api/tasks/:id/done | { summary? } | dashboard (after merge) |
-| POST | /api/tasks | { mission_id?, tasks: CreateTaskInput[] } | orchestrator agent |
+| GET | /api/plan-requests | none → { requests: PlanRequest[] } (at most one; claims it) | orchestrator agent |
+| POST | /api/tasks | { mission_id?, tasks: CreateTaskInput[] } (planning mission: strict plan validation, closes the request) | orchestrator agent |
 | PATCH | /api/tasks/:id | UpdateTaskInput | dashboard |
 | POST | /api/tasks/approve | { ids } | dashboard |
 | POST | /api/tasks/reorder | { ids } | dashboard |
-| POST | /api/missions | { title, goal, source_doc_id?, google_access_token? } → mission + drafts | dashboard |
+| POST | /api/missions | { title, goal } → mission (+ drafts with `gemini`; `planning` with `claude-code`) | dashboard |
 | POST | /api/missions/:id/review-task | { task_id } → { review } (in_review tasks; stored on the task, bound to head_sha) | dashboard |
 | POST | /api/missions/:id/recover | { task_id } → { task_id, kind } (failed tasks; new draft) | dashboard |
 | POST | /api/missions/:id/handoff | { google_access_token } → handoff Doc URL | dashboard |
@@ -150,7 +160,8 @@ hq progress <id> "msg"
 hq review <id> --pr <url> --branch <b>     # CLI fills head_sha and runs lint/typecheck/build itself
 hq fail <id> "reason"       # attaches the last 40 lines of the failing check
 hq status [--json]
-hq tasks add plan.json      # orchestrator agents
+hq plan-requests [--json]   # orchestrator: take the next open plan request, or NO_REQUEST
+hq tasks add [--mission <id>] plan.json   # orchestrator: submit drafts / a mission's plan
 hq msg <agent|task> "text"  # message an agent (id or name) or a task's current agent
 hq inbox                    # heartbeat + show unread messages
 ```
