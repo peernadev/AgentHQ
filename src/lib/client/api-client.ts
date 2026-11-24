@@ -17,6 +17,8 @@ export class ApiError extends Error {
 interface RequestOptions {
   method?: string;
   body?: unknown;
+  /** Sent as X-Project-Id: the project a dashboard route acts on. */
+  projectId?: string | null;
   signal?: AbortSignal;
 }
 
@@ -73,6 +75,7 @@ export async function apiRequest<T>(user: User, path: string, options: RequestOp
       headers: {
         Accept: "application/json",
         Authorization: `Bearer ${token}`,
+        ...(options.projectId ? { "X-Project-Id": options.projectId } : {}),
         ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
       },
       ...(body !== undefined ? { body } : {}),

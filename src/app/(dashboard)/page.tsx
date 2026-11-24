@@ -1,15 +1,16 @@
 import { Suspense } from "react";
-import { LiveNetworkDashboard } from "@/components/network/live-network-dashboard";
+import { ProjectPicker } from "@/components/projects/project-picker";
 
 // The auth gate waits for a browser session before rendering this segment.
 export const instant = false;
 
-function DashboardLoading() {
-  return <main aria-busy="true" aria-label="Loading mission control" className="flex min-h-screen items-center justify-center bg-background font-sans text-sm text-muted-foreground">
-    <p role="status">Loading mission control…</p>
+function PickerLoading() {
+  return <main aria-busy="true" aria-label="Loading your projects" className="flex min-h-screen items-center justify-center bg-background font-sans text-sm text-muted-foreground">
+    <p role="status">Loading your projects…</p>
   </main>;
 }
 
-export default function DashboardPage() {
-  return <Suspense fallback={<DashboardLoading />}><LiveNetworkDashboard /></Suspense>;
+/** After sign-in: pick a project (or create one, for global owners). */
+export default function ProjectsPage() {
+  return <Suspense fallback={<PickerLoading />}><ProjectPicker /></Suspense>;
 }
