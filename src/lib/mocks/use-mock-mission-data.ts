@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { createMissionSnapshot, mockMissionAgents, taskPoints } from "@/lib/mocks/mission";
+import { createMissionSnapshot, MOCK_PROJECT_ID, mockMissionAgents, taskPoints } from "@/lib/mocks/mission";
 import type { CreateMissionRequest, CreateMissionResponse, Task } from "@/types/api";
 
 /** Local mock adapter: replace this boundary when the backend is ready. No network writes. */
@@ -51,7 +51,7 @@ export function useMockMissionData() {
       setData(current => ({
         ...current,
         tasks: current.tasks.map(task => ids.includes(task.id) ? { ...task, status: "queued", updated_at: new Date().toISOString() } : task),
-        events: [{ id: String(Date.now()), mission_id: missionId, task_id: ids[0], agent_id: null, type: "approved", message: `Approved ${ids.length} mock drafts · added to the queue`, data: null, created_at: new Date().toISOString() }, ...current.events],
+        events: [{ id: String(Date.now()), project_id: MOCK_PROJECT_ID, mission_id: missionId, task_id: ids[0], agent_id: null, type: "approved", message: `Approved ${ids.length} mock drafts · added to the queue`, data: null, created_at: new Date().toISOString() }, ...current.events],
       }));
       setApproving(false);
       setAnnouncement(`${ids.length} drafts approved locally and added to the queue.`);
@@ -98,17 +98,17 @@ export function useMockMissionData() {
       if (version !== planVersion.current) throw new Error("Planning cancelled.");
       const id = `mock-${Date.now()}`;
       const timestamp = new Date().toISOString();
-      const mission: CreateMissionResponse["mission"] = { id, title, goal, status: "awaiting_approval", source_doc_id: null, source_doc_url: null, plan_doc_url: null, handoff_doc_url: null, created_by: "mock-planner", created_at: timestamp };
+      const mission: CreateMissionResponse["mission"] = { id, project_id: MOCK_PROJECT_ID, title, goal, status: "awaiting_approval", source_doc_id: null, source_doc_url: null, plan_doc_url: null, handoff_doc_url: null, created_by: "mock-planner", created_at: timestamp };
       const steps = ["Define acceptance criteria", "Build the first scoped slice", "Verify and document the result"];
       const drafts: Task[] = steps.map((step, index) => ({
-        id: `${id}-task-${index + 1}`, mission_id: id, title: `${step}: ${title}`,
+        id: `${id}-task-${index + 1}`, project_id: MOCK_PROJECT_ID, mission_id: id, title: `${step}: ${title}`,
         description: `Fixture step ${index + 1} for your goal: ${goal}`, acceptance: `Document evidence for: ${goal}`,
         priority: index + 1, size: index === 1 ? "M" : "S", scope: [`src/missions/${id}/${["criteria", "implementation", "verification"][index]}/`], depends_on: [],
         status: "draft", agent_id: null, attempt_id: null, lease_expires_at: null, branch: null, pr_url: null, head_sha: null, checks: null, review: null, result_summary: null,
         created_by: "mock-planner", claimed_at: null, completed_at: null, created_at: timestamp, updated_at: timestamp,
       }));
       const response: CreateMissionResponse = { mission, task_ids: drafts.map(task => task.id) };
-      setData(current => ({ ...current, missions: [...current.missions, mission], tasks: [...current.tasks, ...drafts], events: [{ id: `${id}-created`, mission_id: id, task_id: null, agent_id: null, type: "created", message: "Mock mission planned · 3 deterministic fixture drafts created", data: null, created_at: timestamp }, ...current.events] }));
+      setData(current => ({ ...current, missions: [...current.missions, mission], tasks: [...current.tasks, ...drafts], events: [{ id: `${id}-created`, project_id: MOCK_PROJECT_ID, mission_id: id, task_id: null, agent_id: null, type: "created", message: "Mock mission planned · 3 deterministic fixture drafts created", data: null, created_at: timestamp }, ...current.events] }));
       setMissionId(id);
       setSelectedTaskId(response.task_ids[0]);
       setQueueTab("drafts");

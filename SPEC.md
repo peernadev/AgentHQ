@@ -58,35 +58,45 @@ a mission-control dashboard.
 - `hq` CLI: plain Node, no dependencies
 
 ## 5. Firestore data model
+AgentHQ is **project-centered**: a project is one repo and its team. Every operational document
+carries `project_id`; claims, leases, fairness, briefings, scope locks and orchestrator requests
+only ever see their own project. `TEAM_EMAILS` are global owners of every project (bootstrap, so
+the team can't lock itself out); `PROJECT_CREATORS` = `global_owners` (default: only they create
+projects) or `anyone` (any signed-in user, who becomes the new project's owner).
 ```
-participants/{id}   name, email, color, points, tasks_done, created_at
-agents/{id}         participant_id, name, machine, tool, model, role(worker|orchestrator),
+projects/{id}       name, repo_url, default_branch, join_code_hash (sha256; the code is shown once),
+                    created_by, created_at
+projectMembers/{projectId}_{email}   project_id, email (lowercased), name, role(owner|member),
+                    color, added_by, created_at      (dashboard access: members of that project)
+participants/{id}   project_id, name, email, color, points, tasks_done, created_at   (per project)
+agents/{id}         project_id, participant_id, name, machine, tool, model, role(worker|orchestrator),
                     status(idle|working|blocked|offline), current_task_id, note, last_heartbeat
-agentTokens/{sha}   agent_id                      (server-only, never readable by the browser)
-missions/{id}       title, goal, source_doc_id, source_doc_url, plan_doc_url, handoff_doc_url,
+agentTokens/{sha}   agent_id, project_id          (server-only, never readable by the browser)
+missions/{id}       project_id, title, goal, source_doc_id, source_doc_url, plan_doc_url, handoff_doc_url,
                     status(planning|awaiting_approval|running|reviewing|done), created_by, created_at,
                     plan_source(gemini|cached_demo|orchestrator), plan_requested_at,
                     plan_claimed_by, plan_claimed_by_name, plan_claimed_at   (plan request, AI_PROVIDER=claude-code)
-tasks/{id}          mission_id, title, description, acceptance, priority, size(S|M|L),
+tasks/{id}          project_id, mission_id, title, description, acceptance, priority, size(S|M|L),
                     scope[], depends_on[], status(draft|queued|claimed|in_progress|in_review|done|failed|cancelled),
                     agent_id, attempt_id, lease_expires_at, branch, pr_url, head_sha,
                     checks{lint,typecheck,build}, review{verdict,notes,sha}, result_summary,
                     orchestrator_request{kind(recovery|review), sha, requested_at, requested_by,
                       claimed_by, claimed_by_name, claimed_at} | null   (AI_PROVIDER=claude-code),
                     created_by, claimed_at, completed_at, created_at, updated_at
-events/{auto}       mission_id, task_id, agent_id, type, message, data, created_at
-messages/{id}       from_agent, from_name, to_agent, to_task, text, created_at, read_at
+events/{auto}       project_id, mission_id, task_id, agent_id, type, message, data, created_at
+messages/{id}       project_id, from_agent, from_name, to_agent, to_task, text, created_at, read_at
                     (agent -> agent; each send also logs a "message" event)
-meta/scopeRegistry  locks: { [taskId]: string[] }, updated_at
-outbox/{key}        kind(plan_doc|handoff_doc|calendar_event), mission_id, status, result_id
+scopeRegistries/{projectId}   project_id, locks: { [taskId]: string[] }, updated_at   (one per project)
+outbox/{key}        project_id, kind(plan_doc|handoff_doc|calendar_event), mission_id, status, result_id
 ```
 Points per size (fairness): S=1, M=2, L=4.
 
 ## 6. Claim transaction (replaces the SQL claim RPC)
-One Admin SDK `runTransaction`. **Every claim reads and writes `meta/scopeRegistry`**,
-which serializes claims (same role as the Postgres advisory lock).
-1. Read the registry, the agent, all participants (for fairness), up to 50 `queued`
-   tasks ordered by priority, and active tasks whose `lease_expires_at < now`.
+One Admin SDK `runTransaction`, **scoped to the agent's project**. Every claim reads and writes
+its project's `scopeRegistries/{projectId}`, which serializes claims within a project (projects
+never block each other).
+1. Read the project's registry, the agent, the project's participants (for fairness), its `queued`
+   tasks (optionally one mission's, `--mission`), and its active tasks whose `lease_expires_at < now`.
 2. Release expired leases: task → queued, clear agent/attempt, remove its lock,
    subtract its points, mark agent offline, add a `released` event.
 3. Fairness: if my points > average of online participants + 2 and a teammate has an
@@ -101,7 +111,8 @@ which serializes claims (same role as the Postgres advisory lock).
 - Locks stay through `in_review` and are released by `done` (merged).
 - **Never call Gemini or Workspace inside a transaction** (callbacks can rerun).
   Commit an `outbox` record, then run the external action idempotently afterwards.
-- Composite index needed: tasks(status, priority). Firestore prints a create-index link the first time.
+- Composite indexes are in `firestore.indexes.json` (project_id + status, + priority, ...);
+  deployed with `npx firebase-tools deploy --only firestore`.
 
 ## 7. AI roles
 **AI_PROVIDER** = `claude-code` (default) or `gemini`. With `claude-code` the server makes no AI calls for
@@ -140,7 +151,7 @@ Every successful agent-route response also carries `inbox`: the agent's unread m
 (oldest first, max 50), marked read by that response. Error responses leave them unread.
 | Method | Route | Body | Who |
 |---|---|---|---|
-| POST | /api/agents/join | { code, participant, name, machine?, tool?, model?, role? } | CLI |
+| POST | /api/agents/join | { code (the project's join code), participant, name, email?, machine?, tool?, model?, role? } → { agent_id, participant_id, token, project_id, project_name } | CLI |
 | POST | /api/tasks/claim | { mission_id? } → { task \| null, reason? } (task includes attempt_id; mission_id limits candidates) | worker |
 | POST | /api/tasks/:id/progress | { attempt_id, message } | worker |
 | POST | /api/tasks/:id/review | { attempt_id, pr_url, branch, head_sha, checks, summary? } | worker |
@@ -159,12 +170,21 @@ Every successful agent-route response also carries `inbox`: the agent's unread m
 | POST | /api/missions/:id/review-task | { task_id } → { review, requested? } (in_review tasks; stored on the task, bound to head_sha) | dashboard |
 | POST | /api/missions/:id/recover | { task_id } → { task_id, kind } (gemini) or { requested: true } (claude-code) | dashboard |
 | POST | /api/missions/:id/handoff | { google_access_token } → handoff Doc URL | dashboard |
-Dashboard routes verify the Firebase ID token (`Authorization: Bearer <idToken>`) and
-that the email belongs to a participant.
+Dashboard routes verify the Firebase ID token (`Authorization: Bearer <idToken>`). Project routes
+also send `X-Project-Id`; the caller must be a member of that project (or a global owner), and every
+document a route touches must belong to it (else 404). Agent routes take the project from the agent.
+| Method | Route | Body | Who |
+|---|---|---|---|
+| GET | /api/me | none → MeResponse (my projects + roles, can_create_projects) | dashboard |
+| POST | /api/projects | { name, repo_url, default_branch? } → { project, join_code } (code shown once) | global owner (PROJECT_CREATORS) |
+| POST | /api/projects/:id/join-code | none → { join_code } (rotate; old code stops working) | project owner |
+| POST | /api/projects/:id/members | { name, email, role?, color? } → { member } | project owner |
+| DELETE | /api/projects/:id/members/:email | { revoke_agents? } (removes access; optionally the person's agent tokens) | project owner |
 
 ## 9. `hq` CLI (cli/hq.mjs, Node 22+, no deps, config in ./.hq.json)
 ```
-hq join --code <TEAM_JOIN_CODE> --participant <name> --name <agent> [--role worker|orchestrator] [--tool claude|codex|antigravity]
+hq join --code <PROJECT_JOIN_CODE> --participant <name> --name <agent> [--email <google email>] [--role worker|orchestrator] [--tool claude|codex|antigravity]
+                            # the code selects the project; .hq.json stores project_id
 hq claim [--mission <id>]   # prints task JSON (with attempt_id) or NO_TASK; --mission: only that mission
 hq progress <id> "msg"
 hq review <id> --pr <url> --branch <b>     # CLI fills head_sha and runs lint/typecheck/build itself
