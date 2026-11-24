@@ -50,8 +50,20 @@ export interface Mission {
   created_by: string;
   created_at: string;
   // "cached_demo": Gemini was busy and DEMO_FALLBACK=1, so the saved demo plan was used. Show it in the UI.
-  plan_source?: "gemini" | "cached_demo";
+  // "orchestrator": AI_PROVIDER=claude-code; an orchestrator agent (Claude Code) drafts the plan.
+  plan_source?: "gemini" | "cached_demo" | "orchestrator";
+  // Plan request (AI_PROVIDER=claude-code): open while status is "planning". A claim expires after
+  // PLAN_CLAIM_MINUTES, then another orchestrator may take it.
+  plan_requested_at?: string | null;
+  plan_claimed_by?: string | null;       // orchestrator agent id
+  plan_claimed_by_name?: string | null;  // its name, for the dashboard
+  plan_claimed_at?: string | null;
 }
+
+/** Who drafts plans (and, later, recovery and review): an orchestrator agent, or Gemini inside the server. */
+export type AiProvider = "claude-code" | "gemini";
+/** How long an orchestrator's claim on a plan request lasts; also when the UI says "No orchestrator online". */
+export const PLAN_CLAIM_MINUTES = 10;
 
 export interface CheckResults { lint: boolean; typecheck: boolean; build: boolean }
 
@@ -182,9 +194,20 @@ export interface CreateMissionRequest {
 }
 export interface CreateMissionResponse {
   mission: Mission;
-  task_ids: string[];
+  task_ids: string[];     // empty when an orchestrator will plan (mission.status "planning")
   cached_plan?: boolean;  // true: not a live Gemini plan (see Mission.plan_source); the UI must say so
 }
+
+/** One open plan request, claimed by the calling orchestrator (GET /api/plan-requests). */
+export interface PlanRequest {
+  mission_id: string;
+  title: string;
+  goal: string;
+  requested_by: string;
+  requested_at: string;
+  claimed_at: string;
+}
+export interface PlanRequestsResponse { requests: PlanRequest[] }
 
 export interface ReviewTaskRequest { task_id: string }
 export interface ReviewTaskResponse { review: TaskReview }

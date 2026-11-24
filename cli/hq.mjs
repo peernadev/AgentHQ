@@ -25,7 +25,10 @@ const USAGE = `Usage: hq <command>
   fail <id> "reason" [--no-checks]
                                attaches the last ${LOG_LINES} lines of the failing check
   status [--json]
-  tasks add plan.json          orchestrator: { mission_id?, tasks: [...] } or [...]
+  plan-requests [--json]       orchestrator: take the next open plan request (claims it), or NO_REQUEST
+  tasks add [--mission <id>] plan.json
+                               orchestrator: submit drafts ({ tasks: [...] } or [...]); with --mission
+                               for a planning mission, the plan is validated and the request closed
   msg <agent|task> "text"      message an agent (id or name) or a task's current agent
   inbox                        show unread messages (also a heartbeat)
 Every call prints new messages to stderr, starting with "MESSAGE from <agent>".
@@ -280,16 +283,33 @@ const commands = {
     if (!res?.inbox?.length) console.log("No new messages.");
   },
 
+  async "plan-requests"(argv) {
+    const { values: v } = parseArgs({ args: argv, options: { json: { type: "boolean" } } });
+    const res = await api(loadConfig(), "GET", "/api/plan-requests");
+    const [r] = res.requests ?? [];
+    if (v.json) return console.log(JSON.stringify(r ?? null, null, 2));
+    if (!r) return console.log("NO_REQUEST");
+    console.log(`PLAN REQUEST ${r.mission_id}
+Title: ${r.title}
+Requested by ${r.requested_by} at ${r.requested_at}
+Goal:
+${r.goal}
+`);
+    console.log(`Submit with: hq tasks add --mission ${r.mission_id} plan.json`);
+  },
+
   async tasks(argv) {
-    const [sub, file] = argv;
-    if (sub !== "add" || !file) die("Usage: hq tasks add plan.json");
+    const { values: v, positionals } = parseArgs({ args: argv, allowPositionals: true, options: { mission: { type: "string" } } });
+    const [sub, file] = positionals;
+    if (sub !== "add" || !file) die("Usage: hq tasks add [--mission <id>] plan.json");
     let plan;
     try {
       plan = JSON.parse(readFileSync(file, "utf8"));
     } catch (err) {
       die(`Cannot read ${file}: ${err.message}`);
     }
-    const body = Array.isArray(plan) ? { tasks: plan } : plan;
+    const body = Array.isArray(plan) ? { tasks: plan } : { ...plan };
+    if (v.mission) body.mission_id = v.mission;
     const res = await api(loadConfig(), "POST", "/api/tasks", body);
     console.log(`Created ${res.ids.length} draft task(s):\n${res.ids.join("\n")}`);
   },
