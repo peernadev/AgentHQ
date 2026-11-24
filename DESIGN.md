@@ -109,8 +109,11 @@ The user approved option 01 on 2026-11-21 as the replacement visual direction. T
 - Optional texture: a very faint hexagon pattern (`bg-hex`) on the page backdrop or header only, never behind text.
 - Keep flat surfaces, thin borders, generous spacing and one sans font (Geist) for UI text; Geist Mono only for figures, timestamps and code.
 - The sign-in page uses the same theme: solid card on the hex backdrop, AgentHQ mark, one primary button.
-- For the mission page, Attention is the default. Its initial two decisions stay separate from the three drafts awaiting approval. Tasks, Team and Activity are alternate tabs; coordination is a compact disclosure.
-- Task evidence appears inline on demand. The selected mission page replaces the earlier dense board and permanent inspector direction.
+- Layout (2026-11-23): the network view is the main dashboard at `/`, on live Firestore data. Top bar (brand, live indicator, sign-out), mission header (title, stored `missions.status`, mission picker, New mission), section tabs Mission · Agents · Queue · Activity with the attention count.
+- Agents shows the team graph (AgentHQ server hub, workers, owners with workload points) beside an inspector for the selected worker or the server. Working workers and their edges use the green accent and glow; an idle worker whose PR is in review is amber; offline is dashed and dim.
+- Queue lists Up next · Drafts · In flight · Done & failed, with a task panel holding evidence and every action (approve, review evidence, mark done after a merge confirmation, propose recovery). A failed task shows its reason and check log; a pending recovery draft is linked instead of offering another recovery.
+- Every action shows a spinner on its button and its result or error next to it (plus a toast), never only at the top of the page.
+- `/lab/network` stays the mock reference for this layout (variants, sample data); both share `src/components/network/network-parts.tsx`.
 - Preserve the AgentHQ name and native monochrome AgentHQMark SVG.
 
 ## Colors
