@@ -9,7 +9,7 @@ import { MissionCreator } from "@/components/mission-creator";
 import { Network, TaskEvidence, WorkerStatus, age, assignedTask, missionLabels, taskLabels } from "@/components/network/network-parts";
 import { useFirebaseAuth } from "@/lib/client/auth-provider";
 import { useMissionData } from "@/lib/client/use-mission-data";
-import type { Agent, Task } from "@/types/api";
+import { PLAN_CLAIM_MINUTES, type Agent, type Mission, type Task } from "@/types/api";
 import styles from "../agent-network-dashboard.module.css";
 
 type Board = ReturnType<typeof useMissionData>;
@@ -43,6 +43,41 @@ function lastFailure(board: Board, task: Task) {
     log: typeof event.data?.log_excerpt === "string" ? event.data.log_excerpt : null,
   };
 }
+/** Where a "planning" mission's request stands: waiting, claimed, or nobody picked it up in time. */
+function planningState(mission: Mission, now: number) {
+  const limit = PLAN_CLAIM_MINUTES * 60 * 1000;
+  const requested = Date.parse(mission.plan_requested_at ?? mission.created_at);
+  const claimed = mission.plan_claimed_at ? Date.parse(mission.plan_claimed_at) : null;
+  const name = mission.plan_claimed_by_name ?? "The orchestrator";
+  if (!now) return { kind: "waiting" as const, since: requested, name };
+  if (claimed !== null) return { kind: now - claimed < limit ? "claimed" as const : "stalled" as const, since: claimed, name };
+  return { kind: now - requested < limit ? "waiting" as const : "offline" as const, since: requested, name };
+}
+
+function PlanningPanel({ mission, now }: { mission: Mission; now: number }) {
+  const state = planningState(mission, now);
+  const origin = typeof window === "undefined" ? "https://agenthq-nine.vercel.app" : window.location.origin;
+  const busy = state.kind === "waiting" || state.kind === "claimed";
+  return <section className={styles.planningPanel} aria-labelledby="planning-heading" aria-live="polite">
+    <div className={styles.planningStatus}>
+      {busy ? <span className={styles.spinner} aria-hidden="true" /> : <Server size={20} aria-hidden="true" />}
+      <div>
+        <h2 id="planning-heading">{state.kind === "waiting" ? "Waiting for the orchestrator…" : state.kind === "claimed" ? `${state.name} is drafting the plan…` : "No orchestrator online"}</h2>
+        <p>{state.kind === "waiting" ? `Requested ${age(new Date(state.since).toISOString(), now)}. An orchestrator agent checks for plan requests every 30 seconds.`
+          : state.kind === "claimed" ? `Claimed ${age(new Date(state.since).toISOString(), now)}. The drafts appear in Queue for your approval when it submits.`
+          : state.kind === "stalled" ? `${state.name} claimed this ${age(new Date(state.since).toISOString(), now)} and stopped responding. Any orchestrator can take it over now.`
+          : `Nobody picked this up within ${PLAN_CLAIM_MINUTES} minutes. The request stays open: start an orchestrator and it plans this mission next.`}</p>
+      </div>
+    </div>
+    <div className={styles.detailSection}><h3>Goal</h3><p>{mission.goal}</p></div>
+    {!busy && <div className={styles.detailSection}>
+      <h3>Start an orchestrator on a laptop (in the repo)</h3>
+      <pre className={styles.failureLog}>{`git pull\nHQ_URL=${origin} node cli/hq.mjs join --code <TEAM_JOIN_CODE> \\\n  --participant <your name> --name orchestrator-<you> --role orchestrator --tool claude\nclaude "Read prompts/orchestrator.md and run its loop."`}</pre>
+      <small>PowerShell: <code>$env:HQ_URL=&quot;{origin}&quot;</code> before the join command. Details in prompts/orchestrator.md.</small>
+    </div>}
+  </section>;
+}
+
 /** A recovery draft proposed for this failed task that nobody has approved yet. */
 function pendingRecovery(board: Board, task: Task): Task | null {
   const ids = board.events.filter(item => item.type === "recovery_proposed" && item.task_id === task.id)
@@ -224,6 +259,7 @@ export function LiveNetworkDashboard() {
       {creating ? <div className={styles.creatorSurface}><MissionCreator mode="live" planning={board.planning} disabled={acting} error={board.planningError} onCancel={() => setCreating(false)} onPlan={async input => { const response = await board.planMission(input); setCreating(false); setSection("queue"); board.setQueueTab("drafts"); setSelected("server"); return response; }} /></div>
         : !mission ? board.loading ? <div className={styles.loadingState} role="status"><span className={styles.spinner} aria-hidden="true" />Connecting to your team&apos;s missions, tasks and workers…</div>
           : <div className={styles.empty}><Server size={30} aria-hidden="true" /><h3>No missions yet</h3><p>Describe a goal and the AI drafts scoped tasks for your team to review.</p><button className={styles.primary} onClick={() => setCreating(true)}><Plus size={15} aria-hidden="true" />New mission</button></div>
+        : mission.status === "planning" ? <PlanningPanel mission={mission} now={board.now} />
         : <>
           {section === "agents" && <div className={styles.workspace}><Network key={mission.id} agents={board.agents} participants={board.participants} tasks={board.allTasks} workload={board.workload} variant="orbit" selected={selected} select={selectWorker} nodeLabel={liveLabel} serverCaption="AI planning · deterministic claims" emptyText="Workers appear here after they run hq join." />{selectedAgent ? workerInspector(selectedAgent) : serverInspector()}</div>}
 

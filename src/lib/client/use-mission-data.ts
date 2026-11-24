@@ -244,7 +244,8 @@ export function useMissionData() {
         pendingMissionId: current.data.missions.some(item => item.id === response.mission.id) ? null : response.mission.id,
         selectedTaskId: response.task_ids[0] ?? null, queueTab: "drafts",
         cachedMissionIds: cached ? [...new Set([...current.cachedMissionIds, response.mission.id])] : current.cachedMissionIds,
-        announcement: cached ? "Gemini was busy. A cached demo plan was saved; review its drafts before approval."
+        announcement: response.mission.status === "planning" ? `Plan requested for ${response.mission.title}. Waiting for an orchestrator to draft it.`
+          : cached ? "The AI was busy. A cached demo plan was saved; review its drafts before approval."
           : `Plan created for ${response.mission.title}. Review the drafts before approval.`,
       }));
       return response;
