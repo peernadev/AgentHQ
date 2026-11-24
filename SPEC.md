@@ -71,6 +71,8 @@ tasks/{id}          mission_id, title, description, acceptance, priority, size(S
                     scope[], depends_on[], status(draft|queued|claimed|in_progress|in_review|done|failed|cancelled),
                     agent_id, attempt_id, lease_expires_at, branch, pr_url, head_sha,
                     checks{lint,typecheck,build}, review{verdict,notes,sha}, result_summary,
+                    orchestrator_request{kind(recovery|review), sha, requested_at, requested_by,
+                      claimed_by, claimed_by_name, claimed_at} | null   (AI_PROVIDER=claude-code),
                     created_by, claimed_at, completed_at, created_at, updated_at
 events/{auto}       mission_id, task_id, agent_id, type, message, data, created_at
 messages/{id}       from_agent, from_name, to_agent, to_task, text, created_at, read_at
@@ -108,6 +110,12 @@ planning: `POST /api/missions` saves a `planning` mission (an open plan request)
 lasts 10 min) and submits the plan with `POST /api/tasks { mission_id, tasks }`, which applies the same strict
 validation as below and moves the mission to `awaiting_approval`. Unclaimed for 10 min → the dashboard says
 "No orchestrator online"; the request stays open. With `gemini`, the server calls Gemini as described below.
+Recovery and review work the same way under `claude-code`: "Propose recovery" opens a `recovery` request
+(the orchestrator submits with `POST /api/tasks/:id/recovery`, same validation as below); "Review evidence"
+saves a **rules-only** review at once (failed checks → revise, out-of-scope → needs_human, else needs_human
+with the facts) and, if checks passed, opens a `review` request bound to the head SHA (the orchestrator
+reviews with `gh pr diff` and submits with `POST /api/tasks/:id/verdict`, same guards as below). The
+rules-only review stands when no orchestrator is online.
 
 - **Planner:** input = brief text (cited), repo tree, AGENTS.md ownership, current queue
   and locks. Output = CreateTaskInput[] (JSON schema). Server validates: schema, no
@@ -140,14 +148,16 @@ Every successful agent-route response also carries `inbox`: the agent's unread m
 | POST | /api/messages | { to_agent (id or name) \| to_task, text } → { message_id, to_agent, to_name } | any agent |
 | GET | /api/messages | none → { inbox } | any agent |
 | POST | /api/tasks/:id/done | { summary? } | dashboard (after merge) |
-| GET | /api/plan-requests | none → { requests: PlanRequest[] } (at most one; claims it) | orchestrator agent |
+| GET | /api/plan-requests | none → { requests: OrchestratorRequest[] } (at most one plan/recovery/review request; claims it) | orchestrator agent |
+| POST | /api/tasks/:id/recovery | { kind, task } → { task_id, kind } (recovery request; recovery validation) | orchestrator agent |
+| POST | /api/tasks/:id/verdict | { sha, verdict, notes, evidence } → { review } (review request; SHA-bound, guarded) | orchestrator agent |
 | POST | /api/tasks | { mission_id?, tasks: CreateTaskInput[] } (planning mission: strict plan validation, closes the request) | orchestrator agent |
 | PATCH | /api/tasks/:id | UpdateTaskInput | dashboard |
 | POST | /api/tasks/approve | { ids } | dashboard |
 | POST | /api/tasks/reorder | { ids } | dashboard |
 | POST | /api/missions | { title, goal } → mission (+ drafts with `gemini`; `planning` with `claude-code`) | dashboard |
-| POST | /api/missions/:id/review-task | { task_id } → { review } (in_review tasks; stored on the task, bound to head_sha) | dashboard |
-| POST | /api/missions/:id/recover | { task_id } → { task_id, kind } (failed tasks; new draft) | dashboard |
+| POST | /api/missions/:id/review-task | { task_id } → { review, requested? } (in_review tasks; stored on the task, bound to head_sha) | dashboard |
+| POST | /api/missions/:id/recover | { task_id } → { task_id, kind } (gemini) or { requested: true } (claude-code) | dashboard |
 | POST | /api/missions/:id/handoff | { google_access_token } → handoff Doc URL | dashboard |
 Dashboard routes verify the Firebase ID token (`Authorization: Bearer <idToken>`) and
 that the email belongs to a participant.
@@ -160,7 +170,9 @@ hq progress <id> "msg"
 hq review <id> --pr <url> --branch <b>     # CLI fills head_sha and runs lint/typecheck/build itself
 hq fail <id> "reason"       # attaches the last 40 lines of the failing check
 hq status [--json]
-hq plan-requests [--json]   # orchestrator: take the next open plan request, or NO_REQUEST
+hq plan-requests [--json] [--wait <s>]   # orchestrator: take the next plan/recovery/review request
+hq recovery <task_id> recovery.json      # orchestrator: submit a recovery draft
+hq verdict <task_id> verdict.json        # orchestrator: submit a review verdict
 hq tasks add [--mission <id>] plan.json   # orchestrator: submit drafts / a mission's plan
 hq msg <agent|task> "text"  # message an agent (id or name) or a task's current agent
 hq inbox                    # heartbeat + show unread messages

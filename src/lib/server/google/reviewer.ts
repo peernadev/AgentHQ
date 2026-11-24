@@ -38,7 +38,8 @@ export function outOfScope(files: PrInfo["files"], scope: string[]): string[] {
   return files.map((f) => f.filename).filter((f) => !inScope(f, scope));
 }
 
-function parse(text: string | undefined): Omit<ReviewDraft, "model"> {
+/** Parses and schema-checks a review (Gemini's answer or an orchestrator's verdict). Throws on bad input. */
+export function parseReview(text: string | undefined): Omit<ReviewDraft, "model"> {
   let raw: Record<string, unknown>;
   try {
     raw = JSON.parse(text ?? "");
@@ -59,16 +60,56 @@ function parse(text: string | undefined): Omit<ReviewDraft, "model"> {
   };
 }
 
-export async function reviewTask(input: ReviewInput): Promise<ReviewDraft> {
-  const { task, checks, pr } = input;
-  const failed = (Object.keys(checks) as (keyof CheckResults)[]).filter((k) => !checks[k]);
+const failedChecks = (checks: CheckResults) => (Object.keys(checks) as (keyof CheckResults)[]).filter((k) => !checks[k]);
+
+/**
+ * The review without any AI: failed checks are "revise"; files outside the scope are "needs_human";
+ * otherwise "needs_human" with the facts (a human or an AI reviewer decides). model = "rules".
+ */
+export function rulesReview(input: ReviewInput): ReviewDraft {
+  const { task, checks, pr, head_sha } = input;
+  const failed = failedChecks(checks);
   if (failed.length) {
     return {
       verdict: "revise", model: "rules",
-      notes: `Checks failed: ${failed.join(", ")}. Fix them and run hq review again; Gemini only reviews passing work.`,
-      evidence: failed.map((k) => `${k}: failed at ${input.head_sha.slice(0, 7)}`),
+      notes: `Checks failed: ${failed.join(", ")}. Fix them and run hq review again; only passing work gets an AI review.`,
+      evidence: failed.map((k) => `${k}: failed at ${head_sha.slice(0, 7)}`),
     };
   }
+  const outside = outOfScope(pr.files, task.scope);
+  if (outside.length) {
+    return {
+      verdict: "needs_human", model: "rules",
+      notes: `Rules-only review: checks passed, but ${outside.length} changed file(s) are outside the task's scope. A human should look at them.`,
+      evidence: [`Outside scope (${task.scope.join(", ")}): ${outside.slice(0, 10).join(", ")}`, `lint, typecheck, build: passed at ${head_sha.slice(0, 7)}`],
+    };
+  }
+  return {
+    verdict: "needs_human", model: "rules",
+    notes: "Rules-only review (no AI): lint, types and build passed and every changed file is inside the task's scope. The acceptance criteria still need a human or AI review.",
+    evidence: [`lint, typecheck, build: passed at ${head_sha.slice(0, 7)}`, `${pr.files.length} changed file(s), all inside ${task.scope.join(", ")}`],
+  };
+}
+
+/** Rules an AI verdict can't override: failed checks are never "pass"; out-of-scope changes are never "pass". */
+export function guardReview(draft: ReviewDraft, input: ReviewInput): ReviewDraft {
+  const failed = failedChecks(input.checks);
+  const outside = outOfScope(input.pr.files, input.task.scope);
+  const out = { ...draft, evidence: [...draft.evidence] };
+  if (outside.length) out.evidence = [`Outside scope (${input.task.scope.join(", ")}): ${outside.slice(0, 10).join(", ")}`, ...out.evidence].slice(0, 6);
+  if (out.verdict === "pass" && failed.length) {
+    out.verdict = "revise";
+    out.notes = `Checks failed (${failed.join(", ")}), so this can't pass. ${out.notes}`;
+  } else if (out.verdict === "pass" && outside.length) {
+    out.verdict = "needs_human";
+    out.notes = `Changed ${outside.length} file(s) outside the task's scope, so this can't pass automatically. ${out.notes}`;
+  }
+  return out;
+}
+
+export async function reviewTask(input: ReviewInput): Promise<ReviewDraft> {
+  const { task, checks, pr } = input;
+  if (failedChecks(checks).length) return rulesReview(input);
   const outside = outOfScope(pr.files, task.scope);
 
   const prompt = [
@@ -91,15 +132,7 @@ export async function reviewTask(input: ReviewInput): Promise<ReviewDraft> {
   for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
     const text = await session.call(contents);
     try {
-      const draft = { ...parse(text), model: session.model };
-      if (outside.length) {
-        draft.evidence = [`Outside scope (${task.scope.join(", ")}): ${outside.slice(0, 10).join(", ")}`, ...draft.evidence].slice(0, 6);
-        if (draft.verdict === "pass") {
-          draft.verdict = "needs_human";
-          draft.notes = `Changed ${outside.length} file(s) outside the task's scope, so this can't pass automatically. ${draft.notes}`;
-        }
-      }
-      return draft;
+      return guardReview({ ...parseReview(text), model: session.model }, input);
     } catch (e) {
       lastError = e instanceof Error ? e.message : String(e);
       contents.push(

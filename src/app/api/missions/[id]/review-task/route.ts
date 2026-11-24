@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { Timestamp } from "firebase-admin/firestore";
 import type { CheckResults, ReviewTaskResponse, TaskReview } from "@/types/api";
+import { aiProvider } from "@/lib/server/ai-provider";
 import { col, getDb } from "@/lib/server/firebase-admin";
 import { fetchPr } from "@/lib/server/google/github";
-import { reviewTask } from "@/lib/server/google/reviewer";
+import { reviewTask, rulesReview, type ReviewInput } from "@/lib/server/google/reviewer";
 import { HttpError, handle, readBody, str } from "@/lib/server/http";
+import { newTaskRequest } from "@/lib/server/orchestrator";
 import { addEvent, parseTaskId } from "@/lib/server/tasks";
 import { requireTeamUser } from "@/lib/server/team-auth";
 
@@ -12,9 +14,11 @@ export const maxDuration = 60; // the Gemini call can take a while
 
 const sameSha = (a: string, b: string) => a.startsWith(b) || b.startsWith(a);
 
-// POST /api/missions/:id/review-task { task_id }: dashboard (team member). Gemini reviews an
-// in_review task's PR (from GitHub) against its acceptance, bound to the task's head_sha.
-// The verdict never changes the task's status: checks must pass and a human still merges.
+// POST /api/missions/:id/review-task { task_id }: dashboard (team member). Reviews an in_review
+// task's PR (from GitHub) against its acceptance, bound to the task's head_sha. The verdict never
+// changes the task's status: checks must pass and a human still merges.
+// AI_PROVIDER=claude-code: saves the rules-only review now and, if checks passed, requests a Claude
+// review from an orchestrator agent (POST /api/tasks/:id/verdict replaces it). gemini: Gemini reviews.
 export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
   const user = await requireTeamUser(req);
   const missionId = parseTaskId((await ctx.params).id);
@@ -31,26 +35,33 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
   const pr = await fetchPr(String(t.pr_url));
   if (!sameSha(pr.head_sha, headSha)) {
     throw new HttpError(409, `The PR's head is ${pr.head_sha.slice(0, 7)}, but the task was submitted at ${headSha.slice(0, 7)}. `
-      + "The agent must run hq review again before Gemini can review it.");
+      + "The agent must run hq review again before it can be reviewed.");
   }
-  const draft = await reviewTask({
+  const input: ReviewInput = {
     task: { title: t.title, description: t.description, acceptance: t.acceptance ?? null, scope: t.scope ?? [] },
     head_sha: headSha, checks: t.checks as CheckResults, pr,
-  });
+  };
+  const orchestrated = aiProvider() === "claude-code";
+  const draft = orchestrated ? rulesReview(input) : await reviewTask(input);
+  const requested = orchestrated && draft.verdict !== "revise"; // failed checks need no AI review
 
   const now = Timestamp.now();
   const review: TaskReview = { ...draft, sha: headSha, reviewed_at: now.toDate().toISOString() };
   await getDb().runTransaction(async (tx) => {
     const cur = await tx.get(snap.ref);
     if (cur.get("status") !== "in_review" || cur.get("head_sha") !== headSha) {
-      throw new HttpError(409, "The task changed while Gemini was reviewing; review discarded, run it again");
+      throw new HttpError(409, "The task changed while it was being reviewed; review discarded, run it again");
     }
-    tx.update(snap.ref, { review: { ...review, reviewed_at: now }, updated_at: now });
+    tx.update(snap.ref, {
+      review: { ...review, reviewed_at: now }, updated_at: now,
+      ...(requested ? { orchestrator_request: newTaskRequest("review", user.email, now, headSha) } : {}),
+    });
     addEvent(tx, {
       type: "reviewed", task_id: taskId, mission_id: missionId,
       message: `${review.verdict}: ${review.notes}`,
       data: { verdict: review.verdict, sha: headSha, model: review.model, by: user.email },
     }, now);
+    if (requested) addEvent(tx, { type: "review_requested", task_id: taskId, mission_id: missionId, message: "Claude review requested from the orchestrator", data: { sha: headSha, by: user.email } }, now);
   });
-  return NextResponse.json<ReviewTaskResponse>({ review });
+  return NextResponse.json<ReviewTaskResponse>({ review, ...(requested ? { requested: true } : {}) });
 });
