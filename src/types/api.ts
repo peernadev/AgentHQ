@@ -13,8 +13,40 @@ export type ReviewVerdict = "pass" | "revise" | "needs_human";
 
 export const TASK_POINTS: Record<TaskSize, number> = { S: 1, M: 2, L: 4 };
 
+// ---------- projects ----------
+// A project is one repo and its team. Every participant, agent, mission, task, event and message
+// has a project_id; claims, leases, fairness, briefings, scope locks and orchestrator requests are
+// per project. TEAM_EMAILS are global owners of every project (bootstrap, can't be locked out).
+
+export type ProjectRole = "owner" | "member";
+/** Who may create projects (env PROJECT_CREATORS): only TEAM_EMAILS (default), or any signed-in user. */
+export type ProjectCreators = "global_owners" | "anyone";
+
+/** projects/{id}. The join code itself is never stored: only join_code_hash (sha256), server-side. */
+export interface Project {
+  id: string;
+  name: string;
+  repo_url: string;          // https://github.com/<owner>/<repo>
+  default_branch: string;
+  created_by: string;        // email
+  created_at: string;
+}
+
+/** projectMembers/{projectId}_{lowercased email}: who may use a project's dashboard. */
+export interface ProjectMember {
+  id: string;
+  project_id: string;
+  email: string;             // lowercased Google email
+  name: string;
+  role: ProjectRole;
+  color: string | null;      // "#rrggbb"
+  added_by: string;
+  created_at: string;
+}
+
 export interface Participant {
   id: string;
+  project_id: string;            // every operational document belongs to exactly one project
   name: string;
   email: string | null;
   color: string | null;
@@ -25,6 +57,7 @@ export interface Participant {
 
 export interface Agent {
   id: string;
+  project_id: string;            // every operational document belongs to exactly one project
   participant_id: string;
   name: string;
   machine: string | null;
@@ -40,6 +73,7 @@ export interface Agent {
 
 export interface Mission {
   id: string;
+  project_id: string;            // every operational document belongs to exactly one project
   title: string;
   goal: string;
   source_doc_id: string | null;
@@ -78,6 +112,7 @@ export interface TaskReview {
 
 export interface Task {
   id: string;
+  project_id: string;            // every operational document belongs to exactly one project
   mission_id: string | null;
   title: string;
   description: string;
@@ -106,6 +141,7 @@ export interface Task {
 
 export interface HqEvent {
   id: string;
+  project_id: string;            // every operational document belongs to exactly one project
   mission_id: string | null;
   task_id: string | null;
   agent_id: string | null;
@@ -118,11 +154,13 @@ export interface HqEvent {
   created_at: string;
 }
 
-export interface ScopeRegistry { locks: Record<string, string[]>; updated_at: string }
+/** scopeRegistries/{projectId}: the scope locks of one project's active and in-review tasks. */
+export interface ScopeRegistry { project_id: string; locks: Record<string, string[]>; updated_at: string }
 
 /** Agent-to-agent message (messages/{id}). to_task is set when sent to a task's current agent. */
 export interface Message {
   id: string;
+  project_id: string;            // every operational document belongs to exactly one project
   from_agent: string;
   from_name: string;
   to_agent: string;
@@ -145,7 +183,8 @@ export interface SendMessageRequest { to_agent?: string; to_task?: string; text:
 export interface SendMessageResponse { message_id: string; to_agent: string; to_name: string }
 
 export interface JoinRequest {
-  code: string;
+  code: string;              // the project's join code; it selects the project
+  email?: string;            // links the participant to the project member with this Google email
   participant: string;
   name: string;
   machine?: string;
@@ -153,7 +192,8 @@ export interface JoinRequest {
   model?: string;
   role?: AgentRole;
 }
-export interface JoinResponse { agent_id: string; participant_id: string; token: string }
+/** project_id/project_name are absent from servers older than the projects change; the CLI tolerates that. */
+export interface JoinResponse { agent_id: string; participant_id: string; token: string; project_id?: string; project_name?: string }
 
 /** A task finished since the claiming agent's previous claim ("what changed" briefing). */
 export interface ChangeSummary { id: string; title: string; summary: string | null; completed_at: string }
@@ -236,5 +276,23 @@ export type RecoveryKind = "fix" | "prerequisite";
 export interface RecoverRequest { task_id: string }
 /** Gemini: the new draft ({ task_id, kind }). claude-code: { requested: true }, the orchestrator drafts it. */
 export interface RecoverResponse { task_id?: string; kind?: RecoveryKind; requested?: boolean }
+
+// ---------- projects API (dashboard: Firebase ID token; project routes also need X-Project-Id) ----------
+
+/** GET /api/me: the signed-in user's projects (global owners see all, as owner). */
+export interface MeResponse {
+  email: string;
+  global_owner: boolean;
+  can_create_projects: boolean;
+  projects: { project: Project; role: ProjectRole }[];
+}
+export interface CreateProjectRequest { name: string; repo_url: string; default_branch?: string }
+/** The join code is returned only here and by a rotation; it is never readable again. */
+export interface CreateProjectResponse { project: Project; join_code: string }
+export interface RotateJoinCodeResponse { join_code: string }
+export interface AddMemberRequest { name: string; email: string; role?: ProjectRole; color?: string }
+export interface AddMemberResponse { member: ProjectMember }
+/** DELETE /api/projects/:id/members/:email { revoke_agents? }: also deletes that person's agents' tokens. */
+export interface RemoveMemberRequest { revoke_agents?: boolean }
 
 export interface HealthResponse { ok: boolean }

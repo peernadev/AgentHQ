@@ -1,6 +1,7 @@
 import { TASK_POINTS, type Agent, type HqEvent, type Mission, type Participant, type Task, type TaskSize, type TaskStatus } from "@/types/api";
 
 // Fixture associations live outside shared API rows, including idle/offline workers.
+export const MOCK_PROJECT_ID = "mock-project";
 export const mockMissionAgents: Record<string, string[]> = { build: ["a1", "a2", "a3", "a4", "a5", "a6"] };
 export interface MissionSnapshot {
   participants: Participant[];
@@ -15,11 +16,11 @@ export const taskPoints = TASK_POINTS;
 export function createMissionSnapshot(now = Date.now()): MissionSnapshot {
   const ago = (seconds: number) => new Date(now - seconds * 1000).toISOString();
   const participants: Participant[] = [
-    { id: "p1", name: "Eran", email: null, color: "indigo", points: 4, tasks_done: 0, created_at: ago(3600) },
-    { id: "p2", name: "Maya", email: null, color: "teal", points: 3, tasks_done: 1, created_at: ago(3600) },
-    { id: "p3", name: "Omer", email: null, color: "amber", points: 1, tasks_done: 0, created_at: ago(3600) },
+    { id: "p1", project_id: MOCK_PROJECT_ID, name: "Eran", email: null, color: "indigo", points: 4, tasks_done: 0, created_at: ago(3600) },
+    { id: "p2", project_id: MOCK_PROJECT_ID, name: "Maya", email: null, color: "teal", points: 3, tasks_done: 1, created_at: ago(3600) },
+    { id: "p3", project_id: MOCK_PROJECT_ID, name: "Omer", email: null, color: "amber", points: 1, tasks_done: 0, created_at: ago(3600) },
   ];
-  const task = (id: string, title: string, status: TaskStatus, size: TaskSize, scope: string[], agent_id: string | null, description: string, acceptance: string, priority: number): Task => ({
+  const task = (id: string, title: string, status: TaskStatus, size: TaskSize, scope: string[], agent_id: string | null, description: string, acceptance: string, priority: number): Task => ({ project_id: MOCK_PROJECT_ID,
     id, title, status, size, scope, agent_id, description, acceptance, priority,
     mission_id: ["t10", "t11"].includes(id) ? "launch" : "build",
     attempt_id: agent_id ? `mock-attempt-${id}` : null,
@@ -50,7 +51,7 @@ export function createMissionSnapshot(now = Date.now()): MissionSnapshot {
   tasks[3].review = { verdict: "needs_human", notes: "Sample review: acceptance criteria appear covered. The build is not passing; verify the signup action and resolve checks before merging.", sha: "4f2e91a", reviewed_at: ago(90) };
   tasks[5].depends_on = ["t1"];
   tasks[7].depends_on = ["t2"];
-  const agent = (id: string, participant_id: string, name: string, status: Agent["status"], current_task_id: string | null, seconds: number, note: string | null = null): Agent => ({
+  const agent = (id: string, participant_id: string, name: string, status: Agent["status"], current_task_id: string | null, seconds: number, note: string | null = null): Agent => ({ project_id: MOCK_PROJECT_ID,
     id, participant_id, name, status, current_task_id, note,
     machine: `${participant_id === "p1" ? "Eran" : participant_id === "p2" ? "Maya" : "Omer"}’s laptop`,
     tool: "codex", model: "worker", role: "worker", last_heartbeat: ago(seconds), created_at: ago(1800),
@@ -66,15 +67,15 @@ export function createMissionSnapshot(now = Date.now()): MissionSnapshot {
       agent("a6", "p3", "omer-worker-2", "offline", null, 192, "No heartbeat received"),
     ],
     missions: [
-      { id: "build", title: "Launch the team app", goal: "Build a landing page with signup and a leaderboard.", status: "running", source_doc_id: null, source_doc_url: null, plan_doc_url: null, handoff_doc_url: null, created_by: "mock-planner", created_at: ago(1800) },
-      { id: "launch", title: "Prepare for launch", goal: "Get the release checklist and team handoff ready.", status: "awaiting_approval", source_doc_id: null, source_doc_url: null, plan_doc_url: null, handoff_doc_url: null, created_by: "mock-planner", created_at: ago(1800) },
+      { id: "build", project_id: MOCK_PROJECT_ID, title: "Launch the team app", goal: "Build a landing page with signup and a leaderboard.", status: "running", source_doc_id: null, source_doc_url: null, plan_doc_url: null, handoff_doc_url: null, created_by: "mock-planner", created_at: ago(1800) },
+      { id: "launch", project_id: MOCK_PROJECT_ID, title: "Prepare for launch", goal: "Get the release checklist and team handoff ready.", status: "awaiting_approval", source_doc_id: null, source_doc_url: null, plan_doc_url: null, handoff_doc_url: null, created_by: "mock-planner", created_at: ago(1800) },
     ],
     events: [
-      { id: "e4", mission_id: "build", task_id: "t4", agent_id: "a2", type: "pr_opened", message: "Eran opened a mock PR · landing page ready for review", data: null, created_at: ago(90) },
-      { id: "e3", mission_id: "build", task_id: "t3", agent_id: "a5", type: "progress", message: "Omer needs a decision on invite expiry", data: null, created_at: ago(160) },
-      { id: "e2", mission_id: "build", task_id: "t2", agent_id: "a3", type: "claimed", message: "Maya claimed the leaderboard · scope reserved", data: null, created_at: ago(260) },
-      { id: "e1", mission_id: "build", task_id: "t5", agent_id: "a4", type: "done", message: "Shared API contracts completed · 1 workload point", data: null, created_at: ago(600) },
-      { id: "e0", mission_id: "build", task_id: null, agent_id: null, type: "created", message: "Mock mission created · team app brief ready", data: null, created_at: ago(1800) },
+      { id: "e4", project_id: MOCK_PROJECT_ID, mission_id: "build", task_id: "t4", agent_id: "a2", type: "pr_opened", message: "Eran opened a mock PR · landing page ready for review", data: null, created_at: ago(90) },
+      { id: "e3", project_id: MOCK_PROJECT_ID, mission_id: "build", task_id: "t3", agent_id: "a5", type: "progress", message: "Omer needs a decision on invite expiry", data: null, created_at: ago(160) },
+      { id: "e2", project_id: MOCK_PROJECT_ID, mission_id: "build", task_id: "t2", agent_id: "a3", type: "claimed", message: "Maya claimed the leaderboard · scope reserved", data: null, created_at: ago(260) },
+      { id: "e1", project_id: MOCK_PROJECT_ID, mission_id: "build", task_id: "t5", agent_id: "a4", type: "done", message: "Shared API contracts completed · 1 workload point", data: null, created_at: ago(600) },
+      { id: "e0", project_id: MOCK_PROJECT_ID, mission_id: "build", task_id: null, agent_id: null, type: "created", message: "Mock mission created · team app brief ready", data: null, created_at: ago(1800) },
     ],
   };
 }
