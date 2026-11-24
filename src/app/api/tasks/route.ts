@@ -26,12 +26,12 @@ export const POST = handle(async (req: Request) => {
   if (missionId && !/^[A-Za-z0-9_-]+$/.test(missionId)) throw new HttpError(400, `"mission_id" is not a valid id`);
 
   const before = missionId ? await col.missions().doc(missionId).get() : null;
-  if (before && !before.exists) throw new HttpError(400, `Mission "${missionId}" not found`);
+  if (before && (!before.exists || before.get("project_id") !== agent.project_id)) throw new HttpError(400, `Mission "${missionId}" not found`);
   const isPlan = before?.get("status") === "planning";
 
   let tasks: ParsedTask[];
   if (isPlan) {
-    const open = await col.tasks().where("status", "in", OPEN).select().limit(500).get();
+    const open = await col.tasks().where("project_id", "==", agent.project_id).where("status", "in", OPEN).select().limit(500).get();
     try {
       tasks = validate(JSON.stringify({ tasks: body.tasks }), new Set(open.docs.map((d) => d.id)));
     } catch (e) {
@@ -44,9 +44,9 @@ export const POST = handle(async (req: Request) => {
   await getDb().runTransaction(async (tx) => {
     const [mission, ctx] = await Promise.all([
       missionId ? tx.get(col.missions().doc(missionId)) : null,
-      readDraftContext(tx, tasks),
+      readDraftContext(tx, tasks, agent.project_id),
     ]);
-    if (mission && !mission.exists) throw new HttpError(400, `Mission "${missionId}" not found`);
+    if (mission && (!mission.exists || mission.get("project_id") !== agent.project_id)) throw new HttpError(400, `Mission "${missionId}" not found`);
     const now = Timestamp.now();
     if (isPlan) {
       if (mission!.get("status") !== "planning") throw new HttpError(409, "This mission already has a plan");
@@ -59,11 +59,11 @@ export const POST = handle(async (req: Request) => {
         status: "awaiting_approval", plan_claimed_by: agent.id, plan_claimed_by_name: agent.name, plan_claimed_at: now,
       });
       addEvent(tx, {
-        type: "plan_submitted", mission_id: missionId, agent_id: agent.id,
+        project_id: agent.project_id, type: "plan_submitted", mission_id: missionId, agent_id: agent.id,
         message: `${agent.name} drafted ${tasks.length} tasks`, data: { tasks: tasks.length },
       }, now);
     }
-    writeDraftTasks(tx, tasks, ctx, { missionId, createdBy: agent.name, agentId: agent.id }, now);
+    writeDraftTasks(tx, tasks, ctx, { projectId: agent.project_id, missionId, createdBy: agent.name, agentId: agent.id }, now);
   });
   return agentJson(agent.id, { ids: tasks.map((t) => t.id) });
 });

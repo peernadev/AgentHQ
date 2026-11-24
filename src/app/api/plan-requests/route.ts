@@ -11,7 +11,7 @@ const ms = (t: unknown) => (t instanceof Timestamp ? t.toMillis() : 0);
 const iso = (t: unknown) => (t instanceof Timestamp ? t.toDate().toISOString() : new Date(0).toISOString());
 type Candidate = { kind: "plan" | "recovery" | "review"; snap: DocumentSnapshot; req: FirebaseFirestore.DocumentData };
 
-// GET /api/plan-requests: orchestrator agents only (`hq plan-requests`). Returns at most one open
+// GET /api/plan-requests: orchestrator agents only (`hq plan-requests`), within the agent's project. Returns at most one open
 // request and claims it for this agent in a transaction, so two orchestrators never take the same one:
 //   plan     - a "planning" mission    -> submit with POST /api/tasks { mission_id, tasks }
 //   recovery - a failed task           -> submit with POST /api/tasks/:id/recovery { kind, task }
@@ -24,8 +24,8 @@ export const GET = handle(async (req: Request) => {
 
   const picked = await getDb().runTransaction(async (tx) => {
     const [missions, tasks] = await Promise.all([
-      tx.get(col.missions().where("status", "==", "planning")),
-      tx.get(col.tasks().where("orchestrator_request.kind", "in", ["recovery", "review"])),
+      tx.get(col.missions().where("project_id", "==", agent.project_id).where("status", "==", "planning")),
+      tx.get(col.tasks().where("project_id", "==", agent.project_id).where("orchestrator_request.kind", "in", ["recovery", "review"])),
     ]);
     const now = Timestamp.now();
     const candidates: Candidate[] = [
@@ -50,7 +50,7 @@ export const GET = handle(async (req: Request) => {
     if (pick.req.claimed_by !== agent.id) {
       const missionId = pick.kind === "plan" ? pick.snap.id : pick.snap.get("mission_id");
       addEvent(tx, {
-        type: `${pick.kind}_claimed`, mission_id: missionId, task_id: pick.kind === "plan" ? null : pick.snap.id, agent_id: agent.id,
+        project_id: agent.project_id, type: `${pick.kind}_claimed`, mission_id: missionId, task_id: pick.kind === "plan" ? null : pick.snap.id, agent_id: agent.id,
         message: `${agent.name} is ${pick.kind === "plan" ? "drafting the plan" : pick.kind === "recovery" ? "drafting a recovery" : "reviewing the PR"}`,
         data: pick.req.claimed_by ? { took_over_from: pick.req.claimed_by } : null,
       }, now);

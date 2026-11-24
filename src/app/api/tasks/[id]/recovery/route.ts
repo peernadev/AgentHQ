@@ -19,7 +19,7 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
   const body = await readBody(req);
 
   const snap = await col.tasks().doc(taskId).get();
-  if (!snap.exists) throw new HttpError(404, "Task not found");
+  if (!snap.exists || snap.get("project_id") !== agent.project_id) throw new HttpError(404, "Task not found");
   const t = snap.data()!;
   if (t.status !== "failed") throw new HttpError(409, `Task is "${t.status}"; only failed tasks can be recovered`);
   if (t.orchestrator_request?.kind !== "recovery") throw new HttpError(409, "No recovery was requested for this task (or it was already submitted)");
@@ -31,7 +31,7 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
     throw new HttpError(400, `Recovery rejected. Fix these and submit again:\n${e instanceof Error ? e.message : String(e)}`);
   }
   await saveRecovery({
-    missionId: t.mission_id, failedId: taskId, kind: draft.kind, task: draft.task,
+    projectId: agent.project_id, missionId: t.mission_id, failedId: taskId, kind: draft.kind, task: draft.task,
     model: `claude-code (${agent.name})`, by: agent.name, agentId: agent.id, createdBy: agent.name,
     guard: (cur, now) => {
       const open = cur.get("orchestrator_request");

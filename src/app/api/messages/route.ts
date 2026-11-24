@@ -26,28 +26,30 @@ export const POST = handle(async (req: Request) => {
     let missionId: string | null = null;
     if (taskId) {
       const task = await tx.get(col.tasks().doc(taskId));
-      if (!task.exists) throw new HttpError(404, "Task not found");
+      if (!task.exists || task.get("project_id") !== agent.project_id) throw new HttpError(404, "Task not found");
       recipientId = HELD.includes(task.get("status")) ? (task.get("agent_id") as string | null) : null;
       if (!recipientId) throw new HttpError(409, `No agent is on task ${taskId} (status "${task.get("status")}")`);
       missionId = task.get("mission_id") ?? null;
     }
-    // to_agent: try it as an id, then as a name (agent names are unique, see /api/agents/join).
+    // to_agent: try it as an id, then as a name (agent names are unique per project, see /api/agents/join).
+    // Only agents in the sender's project can be reached; any other agent is "not found".
     const byId = toAgent && /^[A-Za-z0-9_-]+$/.test(toAgent) ? await tx.get(col.agents().doc(toAgent)) : null;
     const recipient = recipientId
       ? await tx.get(col.agents().doc(recipientId))
-      : byId?.exists ? byId : (await tx.get(col.agents().where("name", "==", toAgent).limit(1))).docs[0];
-    if (!recipient?.exists) throw new HttpError(404, `No agent "${toAgent}"`);
+      : byId?.exists && byId.get("project_id") === agent.project_id ? byId
+      : (await tx.get(col.agents().where("project_id", "==", agent.project_id).where("name", "==", toAgent).limit(1))).docs[0];
+    if (!recipient?.exists || recipient.get("project_id") !== agent.project_id) throw new HttpError(404, `No agent "${toAgent}"`);
     if (recipient.id === agent.id) throw new HttpError(400, "Can't message yourself");
 
     const now = Timestamp.now();
     const ref = col.messages().doc();
     const toName = String(recipient.get("name") ?? recipient.id);
     tx.create(ref, {
-      from_agent: agent.id, from_name: agent.name, to_agent: recipient.id, to_task: taskId,
+      project_id: agent.project_id, from_agent: agent.id, from_name: agent.name, to_agent: recipient.id, to_task: taskId,
       text, created_at: now, read_at: null,
     });
     addEvent(tx, {
-      type: "message", agent_id: agent.id, task_id: taskId, mission_id: missionId,
+      project_id: agent.project_id, type: "message", agent_id: agent.id, task_id: taskId, mission_id: missionId,
       message: `${agent.name} → ${toName}: ${text}`, data: { message_id: ref.id, to_agent: recipient.id },
     }, now);
     return { message_id: ref.id, to_agent: recipient.id, to_name: toName };

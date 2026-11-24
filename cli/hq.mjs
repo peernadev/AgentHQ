@@ -16,7 +16,7 @@ const CHECKS = [
 ];
 
 const USAGE = `Usage: hq <command>
-  join --code <TEAM_JOIN_CODE> --participant <name> --name <agent>
+  join --code <PROJECT_JOIN_CODE> --participant <name> --name <agent> [--email <google email>]
        [--role worker|orchestrator] [--tool claude|codex|antigravity|other] [--model <m>] [--machine <m>]
   claim [--mission <id>] [--json]
                                prints task JSON (attempt_id saved) or NO_TASK; --mission: only that mission's tasks
@@ -164,22 +164,25 @@ const commands = {
       args: argv, options: {
         code: { type: "string" }, participant: { type: "string" }, name: { type: "string" },
         role: { type: "string" }, tool: { type: "string" }, model: { type: "string" }, machine: { type: "string" },
+        email: { type: "string" },
       },
     });
-    const code = v.code ?? process.env.TEAM_JOIN_CODE;
-    if (!code || !v.participant || !v.name) die("join needs --code, --participant and --name");
+    // The code is the project's join code: it selects the project (HQ_JOIN_CODE / TEAM_JOIN_CODE also work).
+    const code = v.code ?? process.env.HQ_JOIN_CODE ?? process.env.TEAM_JOIN_CODE;
+    if (!code || !v.participant || !v.name) die("join needs --code <project join code>, --participant and --name");
     const old = loadConfig({ required: false });
     const body = {
       code, participant: v.participant, name: v.name, machine: v.machine ?? hostname(),
-      tool: v.tool, model: v.model, role: v.role,
+      tool: v.tool, model: v.model, role: v.role, ...(v.email ? { email: v.email } : {}),
     };
     const res = await api(old, "POST", "/api/agents/join", body, { auth: false });
     const sameAgent = old.agent_id === res.agent_id;
     saveConfig({
       url: baseUrl(old), agent_id: res.agent_id, participant_id: res.participant_id, token: res.token,
       name: v.name, role: v.role ?? "worker", current: sameAgent ? old.current ?? null : null,
+      project_id: res.project_id ?? null, project_name: res.project_name ?? null,
     });
-    console.log(`Joined as ${v.name} (agent ${res.agent_id}). Saved ${CONFIG}.`);
+    console.log(`Joined ${res.project_name ? `project ${res.project_name} ` : ""}as ${v.name} (agent ${res.agent_id}). Saved ${CONFIG}.`);
   },
 
   async claim(argv) {
@@ -261,6 +264,7 @@ const commands = {
     if (v.json) return console.log(JSON.stringify({ ...safe, url: baseUrl(cfg), has_token: Boolean(token) }, null, 2));
     console.log(`Agent:   ${cfg.name} (${cfg.agent_id}), role ${cfg.role ?? "worker"}`);
     console.log(`Server:  ${baseUrl(cfg)}`);
+    if (cfg.project_name || cfg.project_id) console.log(`Project: ${cfg.project_name ?? ""} (${cfg.project_id ?? "?"})`);
     console.log(cfg.current
       ? `Task:    ${cfg.current.title} (${cfg.current.task_id}), claimed ${cfg.current.claimed_at ?? "?"}`
       : "Task:    none");

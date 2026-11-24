@@ -21,9 +21,9 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
     const pts = TASK_POINTS[task.size as TaskSize] ?? TASK_POINTS.M;
     tx.update(col.agents().doc(agent.id), { status: "idle", current_task_id: null, note: null });
     tx.update(col.participants().doc(agent.participant_id), { points: FieldValue.increment(-pts) });
-    tx.set(col.scopeRegistry(), { locks: { [id]: FieldValue.delete() }, updated_at: now }, { merge: true });
+    tx.set(col.scopeRegistry(agent.project_id), { locks: { [id]: FieldValue.delete() }, updated_at: now }, { merge: true });
     addEvent(tx, {
-      type: "failed", task_id: id, agent_id: agent.id, mission_id: task.mission_id ?? null,
+      project_id: agent.project_id, type: "failed", task_id: id, agent_id: agent.id, mission_id: task.mission_id ?? null,
       message: reason, data: { reason, log_excerpt: logExcerpt },
     }, now);
     return { status: "failed", lease_expires_at: null };

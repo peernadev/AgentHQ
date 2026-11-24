@@ -28,5 +28,10 @@ export const col = {
   missions: () => getDb().collection("missions"),
   events: () => getDb().collection("events"),
   messages: () => getDb().collection("messages"),
-  scopeRegistry: () => getDb().collection("meta").doc("scopeRegistry"),
+  projects: () => getDb().collection("projects"),
+  projectMembers: () => getDb().collection("projectMembers"),
+  /** projectMembers doc id: one member per project and lowercased email. */
+  memberDoc: (projectId: string, email: string) => getDb().collection("projectMembers").doc(`${projectId}_${email.toLowerCase()}`),
+  /** Scope locks are per project: scopeRegistries/{projectId}. */
+  scopeRegistry: (projectId: string) => getDb().collection("scopeRegistries").doc(projectId),
 };
