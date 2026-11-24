@@ -66,12 +66,16 @@ export function checkNarrowScopes(tasks: PlanTask[], files: string[], min = MIN_
   return errors;
 }
 
-const API_WORDS = /\b(api|apis|endpoints?|routes?)\b/i;
+// Standalone words only: not inside other words ("rapid"), and not as part of a path or file name
+// ("api.ts", "src/types/api.ts", "app/api/x/route.ts"), which name files, not API work.
+const API_WORDS = /(?<![\w./-])(api|apis|endpoints?|routes?)(?![\w/-]|\.\w)/i;
+/** Contract scopes: shared types only. A task touching nothing else is a contract task, not API work. */
+const isContractScope = (s: string) => s.startsWith("src/types/") || s.endsWith(".d.ts");
 
 /** Route location: a task whose title mentions an API, endpoint or route must edit something under src/app/api/. */
 export function checkApiRouteLocation(tasks: PlanTask[]): string[] {
   return tasks
-    .filter((t) => API_WORDS.test(t.title) && !t.scope.some((s) => s.startsWith("src/app/api/")))
+    .filter((t) => API_WORDS.test(t.title) && !t.scope.every(isContractScope) && !t.scope.some((s) => s.startsWith("src/app/api/")))
     .map((t) => `"${t.title}" is API work but no scope is under src/app/api/. Put the route in src/app/api/<feature>/ (server logic can stay in src/lib/server/<feature>.ts as a second scope).`);
 }
 
