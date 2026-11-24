@@ -85,6 +85,23 @@ ok("UI task without API words: not checked", () => assert.deepEqual(
   checkApiRouteLocation([titled("Build leaderboard UI widget component", ["src/components/leaderboard/"])]), []));
 ok("word inside another word ('rapid', 'grapes') not matched", () => assert.deepEqual(
   checkApiRouteLocation([titled("Rapid grapes prototype", ["src/components/x/"])]), []));
+// contract tasks and file names are not API work
+ok("contract task: 'Add API types' scoped to src/types/api.ts accepted", () => assert.deepEqual(
+  checkApiRouteLocation([titled("Add API types for the leaderboard", ["src/types/api.ts"])]), []));
+ok("contract task: several src/types/ scopes accepted", () => assert.deepEqual(
+  checkApiRouteLocation([titled("Define API contracts", ["src/types/api.ts", "src/types/leaderboard.ts"])]), []));
+ok("contract task: .d.ts only accepted", () => assert.deepEqual(
+  checkApiRouteLocation([titled("Declare route types", ["src/lib/route-types.d.ts"])]), []));
+ok("types plus server logic is not a contract task: still rejected", () => assert.equal(
+  checkApiRouteLocation([titled("Add API types and handler", ["src/types/api.ts", "src/lib/server/x.ts"])]).length, 1));
+ok("'api' inside a file name (api.ts) not matched", () => assert.deepEqual(
+  checkApiRouteLocation([titled("Extend api.ts with streak_weeks", ["src/lib/server/leaderboard.ts"])]), []));
+ok("'api'/'route' inside a path not matched", () => assert.deepEqual(
+  checkApiRouteLocation([titled("Tidy src/types/api.ts and app/api/x/route.ts imports", ["src/components/x/"])]), []));
+ok("standalone 'API' next to a file name still matched", () => assert.equal(
+  checkApiRouteLocation([titled("Add API for api.ts consumers", ["src/lib/server/x.ts"])]).length, 1));
+ok("'API.' at the end of a sentence still matched", () => assert.equal(
+  checkApiRouteLocation([titled("Expose the scores API.", ["src/lib/server/x.ts"])]).length, 1));
 ok("route-location error tells Gemini where to put it", () => assert.match(
   checkApiRouteLocation([titled("Add API", ["src/lib/server/x.ts"])])[0], /src\/app\/api\/<feature>\//));
 
