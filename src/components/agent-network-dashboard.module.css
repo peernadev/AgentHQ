@@ -312,3 +312,40 @@
   .mobileWorkers > button { gap: 8px; } .mobileWorkers strong { font-size: 13px; } .facts { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) { .graphSpace { transition: none; } }
+
+/* ---------- Live dashboard (/): the same layout on the app theme tokens (DESIGN.md "Decided") ---------- */
+.live { --bg: var(--background); --surface: var(--card); --raised: var(--popover); --ink: var(--foreground); --muted: var(--muted-foreground); --line: var(--border); --accent: var(--primary); --accent-ink: var(--primary-foreground); --warning: var(--status-review); --danger: var(--status-failed); --offline: var(--status-offline); color-scheme: dark; }
+.live .primary { box-shadow: var(--glow); }
+.live .primary:hover:not(:disabled) { filter: none; background: var(--primary-hover); border-color: var(--primary-hover); }
+.live .primary:disabled { box-shadow: none; opacity: .55; cursor: not-allowed; }
+.live .working .disc { box-shadow: var(--glow); }
+.live .workingEdge { stroke: var(--accent); stroke-opacity: .55; }
+.live .idle .disc i { background: var(--status-idle); }
+.reviewing .disc i { background: var(--warning); }
+.reviewing .nodeState { color: var(--warning); }
+.live .status.idle { color: var(--status-idle); }
+.liveBadge { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); }
+.liveBadge i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: var(--glow); }
+.liveBadge.offlineBadge i { background: var(--danger); box-shadow: none; }
+.userMenu { display: inline-flex; align-items: center; gap: 12px; font-size: 12px; color: var(--muted); }
+.userMenu button { color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+.userMenu button:hover { color: var(--ink); }
+.banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 18px; padding: 12px 14px; border: 1px solid var(--danger); border-radius: 6px; background: color-mix(in srgb, var(--danger) 10%, transparent); font-size: 14px; }
+.banner p { margin: 0; overflow-wrap: anywhere; }
+.badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border: 1px solid var(--line); border-radius: 999px; font-size: 12px; color: var(--muted); }
+.taskActions { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+.taskActions > p, .taskActions > label, .taskActions > .inlineResult { flex-basis: 100%; margin: 0; }
+.taskActions small { color: var(--muted); font-size: 12px; }
+.inlineResult { margin-top: 8px; padding: 9px 11px; border-radius: 5px; border: 1px solid var(--line); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.inlineResult.ok { border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--ink); }
+.inlineResult.error { border-color: var(--danger); color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, transparent); }
+.inlineResult button { margin-left: 6px; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.mergeConfirm { display: flex; align-items: flex-start; gap: 9px; font-size: 13px; line-height: 1.5; cursor: pointer; }
+.mergeConfirm input { width: 16px; height: 16px; margin-top: 2px; accent-color: var(--accent); flex-shrink: 0; }
+.failureLog { margin: 8px 0 0; max-height: 260px; overflow: auto; padding: 11px 13px; border: 1px solid var(--line); border-radius: 5px; background: var(--bg); font-family: var(--font-geist-mono), ui-monospace, monospace; font-size: 12px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+.loadingState { display: flex; align-items: center; gap: 10px; padding: 60px 0; color: var(--muted); }
+/* The lab gives .creatorSurface its own light palette; on the live theme, point it back at the app tokens (names it overrides itself are rebuilt from tokens it does not touch). */
+.live .creatorSurface { color-scheme: dark; --background: var(--card); --foreground: var(--card-foreground); --muted-foreground: var(--status-idle); --border: var(--input); --primary: var(--ring); --primary-foreground: var(--sidebar-primary-foreground); --secondary: var(--popover); --muted: var(--card); --accent: var(--popover); --surface: var(--card); border: 1px solid var(--input); }
