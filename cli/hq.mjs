@@ -25,9 +25,13 @@ const USAGE = `Usage: hq <command>
   fail <id> "reason" [--no-checks]
                                attaches the last ${LOG_LINES} lines of the failing check
   status [--json]
-  plan-requests [--json] [--wait <seconds>]
-                               orchestrator: take the next open plan request (claims it), or NO_REQUEST;
-                               --wait polls every 30 s (each poll is a heartbeat) until one arrives
+  plan-requests [--json] [--wait <seconds>]   (alias: requests)
+                               orchestrator: take the next open request (plan, recovery or review;
+                               claims it), or NO_REQUEST; --wait polls every 30 s until one arrives
+  recovery <failed_task_id> recovery.json
+                               orchestrator: submit { kind: "fix"|"prerequisite", task } for a recovery request
+  verdict <task_id> verdict.json
+                               orchestrator: submit { sha, verdict, notes, evidence } for a review request
   tasks add [--mission <id>] plan.json
                                orchestrator: submit drafts ({ tasks: [...] } or [...]); with --mission
                                for a planning mission, the plan is validated and the request closed
@@ -38,6 +42,9 @@ Server: $HQ_URL (default ${DEFAULT_URL}). Config: ./${CONFIG}`;
 
 class CliError extends Error {}
 const die = (msg) => { throw new CliError(msg); };
+const readJson = (file) => {
+  try { return JSON.parse(readFileSync(file, "utf8")); } catch (err) { return die(`Cannot read ${file}: ${err.message}`); }
+};
 
 // ---------- config ----------
 
@@ -299,13 +306,45 @@ const commands = {
     }
     if (v.json) return console.log(JSON.stringify(r ?? null, null, 2));
     if (!r) return console.log("NO_REQUEST");
-    console.log(`PLAN REQUEST ${r.mission_id}
-Title: ${r.title}
-Requested by ${r.requested_by} at ${r.requested_at}
+    const kind = r.kind ?? "plan";
+    console.log(`${kind.toUpperCase()} REQUEST · ${r.title}
+Requested by ${r.requested_by} at ${r.requested_at}`);
+    if (kind === "plan") {
+      console.log(`Mission: ${r.mission_id}
 Goal:
 ${r.goal}
-`);
-    console.log(`Submit with: hq tasks add --mission ${r.mission_id} plan.json`);
+
+Submit with: hq tasks add --mission ${r.mission_id} plan.json`);
+    } else if (kind === "recovery") {
+      console.log(`Failed task: ${r.task_id} (${r.task.size}, scope ${r.task.scope.join(", ")})
+Reason: ${r.failure.reason}`);
+      if (r.failure.log_excerpt) console.log(`Log:
+${r.failure.log_excerpt}`);
+      console.log(`
+Submit with: hq recovery ${r.task_id} recovery.json`);
+    } else {
+      console.log(`Task: ${r.task_id} (scope ${r.task.scope.join(", ")})
+PR: ${r.pr_url} at ${r.head_sha}
+Checks: lint ${r.checks.lint}, typecheck ${r.checks.typecheck}, build ${r.checks.build}`);
+      console.log(`
+Submit with: hq verdict ${r.task_id} verdict.json   (sha must be ${r.head_sha})`);
+    }
+  },
+
+  requests(argv) { return commands["plan-requests"](argv); },
+
+  async recovery(argv) {
+    const [id, file] = argv;
+    if (!id || !file) die("Usage: hq recovery <failed_task_id> recovery.json");
+    const res = await api(loadConfig(), "POST", `/api/tasks/${encodeURIComponent(id)}/recovery`, readJson(file));
+    console.log(`Recovery draft ${res.task_id} (${res.kind}) saved for human approval.`);
+  },
+
+  async verdict(argv) {
+    const [id, file] = argv;
+    if (!id || !file) die("Usage: hq verdict <task_id> verdict.json");
+    const res = await api(loadConfig(), "POST", `/api/tasks/${encodeURIComponent(id)}/verdict`, readJson(file));
+    console.log(`Review saved: ${res.review.verdict} at ${res.review.sha.slice(0, 7)}${res.review.model ? ` (${res.review.model})` : ""}.`);
   },
 
   async tasks(argv) {

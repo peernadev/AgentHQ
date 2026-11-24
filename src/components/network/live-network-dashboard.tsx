@@ -43,15 +43,25 @@ function lastFailure(board: Board, task: Task) {
     log: typeof event.data?.log_excerpt === "string" ? event.data.log_excerpt : null,
   };
 }
-/** Where a "planning" mission's request stands: waiting, claimed, or nobody picked it up in time. */
-function planningState(mission: Mission, now: number) {
+/** Where an orchestrator request stands: waiting, claimed, stalled (claim expired) or offline (never claimed in time). */
+function requestState(requestedAt: string, claimedAt: string | null | undefined, claimedBy: string | null | undefined, now: number) {
   const limit = PLAN_CLAIM_MINUTES * 60 * 1000;
-  const requested = Date.parse(mission.plan_requested_at ?? mission.created_at);
-  const claimed = mission.plan_claimed_at ? Date.parse(mission.plan_claimed_at) : null;
-  const name = mission.plan_claimed_by_name ?? "The orchestrator";
+  const requested = Date.parse(requestedAt);
+  const claimed = claimedAt ? Date.parse(claimedAt) : null;
+  const name = claimedBy ?? "The orchestrator";
   if (!now) return { kind: "waiting" as const, since: requested, name };
   if (claimed !== null) return { kind: now - claimed < limit ? "claimed" as const : "stalled" as const, since: claimed, name };
   return { kind: now - requested < limit ? "waiting" as const : "offline" as const, since: requested, name };
+}
+function planningState(mission: Mission, now: number) {
+  return requestState(mission.plan_requested_at ?? mission.created_at, mission.plan_claimed_at, mission.plan_claimed_by_name, now);
+}
+/** Section heading for a stored review, by who produced it. */
+function reviewHeadingFor(task: Task) {
+  const model = task.review?.model ?? "";
+  if (model === "rules") return "Rules-only review (no AI)";
+  if (model.startsWith("claude-code")) return `Claude review · ${/((.+))/.exec(model)?.[1] ?? "orchestrator"}`;
+  return "Gemini review";
 }
 
 function PlanningPanel({ mission, now }: { mission: Mission; now: number }) {
@@ -161,6 +171,23 @@ export function LiveNetworkDashboard() {
     return board.actionTaskId === key || (key === "approve-all" && board.approving && !board.actionTaskId) ? <><span className={styles.spinner} aria-hidden="true" />{busy}</> : idle;
   }
 
+  function requestLine(task: Task): ReactNode {
+    const open = task.orchestrator_request;
+    if (!open) return null;
+    const state = requestState(open.requested_at, open.claimed_at, open.claimed_by_name, board.now);
+    const busy = state.kind === "waiting" || state.kind === "claimed";
+    const text = open.kind === "recovery"
+      ? state.kind === "waiting" ? "Recovery requested; waiting for the orchestrator…" : state.kind === "claimed" ? `${state.name} is drafting a recovery…` : "No orchestrator online. You can request the recovery again; it stays open meanwhile."
+      : state.kind === "waiting" ? "Claude review requested; waiting for the orchestrator…" : state.kind === "claimed" ? `${state.name} is reviewing the PR…` : "No orchestrator online. The rules-only review above stands.";
+    return <p className={`${styles.inlineResult} ${busy ? styles.ok : ""}`} role="status">{busy && <span className={styles.spinner} aria-hidden="true" />} {text}</p>;
+  }
+  function requestBusy(task: Task) {
+    const open = task.orchestrator_request;
+    if (!open) return false;
+    const kind = requestState(open.requested_at, open.claimed_at, open.claimed_by_name, board.now).kind;
+    return kind === "waiting" || kind === "claimed";
+  }
+
   function taskPanel(task: Task) {
     const failure = task.status === "failed" ? lastFailure(board, task) : null;
     const recovery = task.status === "failed" ? pendingRecovery(board, task) : null;
@@ -174,7 +201,7 @@ export function LiveNetworkDashboard() {
       <div className={styles.detailSection}><h3>Acceptance</h3><p>{task.acceptance ?? "No acceptance criteria supplied."}</p></div>
       <div className={styles.detailSection}><h3>File scope</h3><ul className={styles.scopeList}>{task.scope.map(scope => <li key={scope}><code>{scope}</code></li>)}</ul><small>{["claimed", "in_progress", "in_review"].includes(task.status) ? task.status === "in_review" ? "Locked until a human marks the merged PR done." : "Locked by this task's active claim." : "No lock held."}</small></div>
       <div className={styles.detailSection}><h3>Dependencies</h3><p>{task.depends_on.length ? task.depends_on.map(id => board.allTasks.find(item => item.id === id)?.title ?? "Task outside this mission").join("; ") : "No prerequisite tasks."}</p></div>
-      <TaskEvidence task={task} />
+      <TaskEvidence task={task} reviewHeading={reviewHeadingFor(task)} />
       {failure && <div className={styles.detailSection}><h3>Failure reason</h3><p>{failure.reason}</p>{failure.log ? <pre className={styles.failureLog} aria-label="Last lines of the failing check">{failure.log}</pre> : <small>No check log was attached.</small>}</div>}
 
       {task.status === "draft" && <div className={styles.taskActions}>
@@ -182,16 +209,19 @@ export function LiveNetworkDashboard() {
         {resultLine(task.id)}
       </div>}
       {task.status === "in_review" && <div className={styles.taskActions} aria-busy={board.actionTaskId === task.id}>
-        <button className={styles.secondary} disabled={acting || !task.pr_url || !task.head_sha} onClick={() => run(task.id, async () => { const { review } = await board.reviewTask(task.id); return `Review saved: ${review.verdict.replaceAll("_", " ")} at ${review.sha.slice(0, 7)}.`; })}>{pendingLabel(task.id, "Review evidence", "Reviewing…")}</button>
+        <button className={styles.secondary} disabled={acting || !task.pr_url || !task.head_sha || (task.orchestrator_request?.kind === "review" && requestBusy(task))} onClick={() => run(task.id, async () => { const { review, requested } = await board.reviewTask(task.id); return `Review saved: ${review.verdict.replaceAll("_", " ")} at ${review.sha.slice(0, 7)}${review.model === "rules" ? " (rules-only)" : ""}.${requested ? " Claude review requested from the orchestrator." : ""}`; })}>{pendingLabel(task.id, "Review evidence", "Reviewing…")}</button>
         <label className={styles.mergeConfirm}><input type="checkbox" checked={confirmed} disabled={acting || !task.head_sha} onChange={event => setMergeConfirmed(current => ({ ...current, [task.id]: event.target.checked ? task.head_sha! : "" }))} />I merged this PR at <code>{task.head_sha?.slice(0, 7) ?? "—"}</code></label>
         <button className={styles.primary} disabled={acting || !checksPassed || !confirmed} onClick={() => run(task.id, async () => { await board.markDone(task.id); return "Marked done. The scope lock is released."; })}>Mark done after merge</button>
+        {task.orchestrator_request?.kind === "review" && requestLine(task)}
         <small>{checksPassed ? "Marking done releases this task's scope lock." : "Lint, types and build must pass before it can be marked done."}</small>
         {resultLine(task.id)}
       </div>}
       {task.status === "failed" && <div className={styles.taskActions} aria-busy={board.actionTaskId === task.id}>
         {recovery
           ? <p className={`${styles.inlineResult} ${styles.ok}`}>Recovery proposed: {recovery.title} · awaiting approval<button onClick={() => openTask(recovery.id)}>Open the draft</button></p>
-          : <button className={styles.secondary} disabled={acting} onClick={() => run(task.id, async () => { const response = await board.recoverTask(task.id); return { kind: "ok", text: `${response.kind === "fix" ? "Fix" : "Prerequisite"} draft proposed. Review it before approving.`, draftId: response.task_id }; })}>{pendingLabel(task.id, "Propose recovery", "Proposing recovery…")}</button>}
+          : task.orchestrator_request?.kind === "recovery" && requestBusy(task) ? requestLine(task)
+          : <button className={styles.secondary} disabled={acting} onClick={() => run(task.id, async () => { const response = await board.recoverTask(task.id); return response.requested ? "Recovery requested from the orchestrator. Its draft appears here for your approval." : { kind: "ok", text: `${response.kind === "fix" ? "Fix" : "Prerequisite"} draft proposed. Review it before approving.`, draftId: response.task_id }; })}>{pendingLabel(task.id, task.orchestrator_request?.kind === "recovery" ? "Request recovery again" : "Propose recovery", "Requesting…")}</button>}
+        {!recovery && task.orchestrator_request?.kind === "recovery" && !requestBusy(task) && requestLine(task)}
         <small>Creates one draft for human approval. The failed task stays visible.</small>
         {resultLine(task.id)}
       </div>}
@@ -214,7 +244,7 @@ export function LiveNetworkDashboard() {
       </dl>
       <div className={styles.detailSection}><h3>Latest progress</h3><p>{agent.note ?? "No progress note yet."}</p></div>
       <div className={styles.detailSection}><h3>{held.length ? "Reserved scope" : "Scope"}</h3>{held.length ? <><ul className={styles.scopeList}>{held.map(scope => <li key={scope}><code>{scope}</code></li>)}</ul><small>{task?.status === "in_review" ? "Held until a human merges the PR." : "Reserved by this task's active claim."}</small></> : <p>No scope held.</p>}</div>
-      {task && <><TaskEvidence task={task} /><button className={styles.secondary} onClick={() => openTask(task.id)}>Open task and actions <ArrowRight size={14} aria-hidden="true" /></button></>}
+      {task && <><TaskEvidence task={task} reviewHeading={reviewHeadingFor(task)} /><button className={styles.secondary} onClick={() => openTask(task.id)}>Open task and actions <ArrowRight size={14} aria-hidden="true" /></button></>}
       {agent.status === "offline" && <p className={styles.footnote}>Offline: its lease expired or it stopped sending heartbeats. Unfinished work is released to the queue on the next claim.</p>}
     </aside>;
   }

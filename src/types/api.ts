@@ -96,6 +96,7 @@ export interface Task {
   checks: CheckResults | null;
   review: TaskReview | null;
   result_summary: string | null;
+  orchestrator_request?: OrchestratorTaskRequest | null;  // open recovery/review request (AI_PROVIDER=claude-code)
   created_by: string;
   claimed_at: string | null;
   completed_at: string | null;
@@ -198,22 +199,42 @@ export interface CreateMissionResponse {
   cached_plan?: boolean;  // true: not a live Gemini plan (see Mission.plan_source); the UI must say so
 }
 
-/** One open plan request, claimed by the calling orchestrator (GET /api/plan-requests). */
-export interface PlanRequest {
-  mission_id: string;
-  title: string;
-  goal: string;
-  requested_by: string;
+/** A recovery or review request on a task, for an orchestrator agent. Cleared when it submits. */
+export interface OrchestratorTaskRequest {
+  kind: "recovery" | "review";
   requested_at: string;
-  claimed_at: string;
+  requested_by: string;
+  sha: string | null;              // review: the head SHA it must review
+  claimed_by: string | null;
+  claimed_by_name: string | null;
+  claimed_at: string | null;
 }
-export interface PlanRequestsResponse { requests: PlanRequest[] }
+
+interface RequestBase { mission_id: string; title: string; requested_by: string; requested_at: string; claimed_at: string }
+interface RequestTask { title: string; description: string; acceptance: string | null; scope: string[]; size: TaskSize }
+/** One open request, claimed by the calling orchestrator (GET /api/plan-requests). */
+export type OrchestratorRequest =
+  | (RequestBase & { kind: "plan"; goal: string })
+  | (RequestBase & { kind: "recovery"; task_id: string; task: RequestTask; failure: { reason: string; log_excerpt: string | null } })
+  | (RequestBase & { kind: "review"; task_id: string; task: RequestTask; pr_url: string; head_sha: string; checks: CheckResults });
+/** @deprecated use OrchestratorRequest */
+export type PlanRequest = OrchestratorRequest;
+export interface PlanRequestsResponse { requests: OrchestratorRequest[] }
+
+/** POST /api/tasks/:id/recovery (orchestrator): the recovery draft for a failed task. */
+export interface RecoverySubmission { kind: RecoveryKind; task: CreateTaskInput }
+/** POST /api/tasks/:id/verdict (orchestrator): a review bound to the head SHA it reviewed. */
+export interface VerdictSubmission { sha: string; verdict: ReviewVerdict; notes: string; evidence: string[] }
 
 export interface ReviewTaskRequest { task_id: string }
-export interface ReviewTaskResponse { review: TaskReview }
+export interface ReviewTaskResponse {
+  review: TaskReview;
+  requested?: boolean;  // AI_PROVIDER=claude-code: the review is rules-only and an orchestrator review was requested
+}
 
 export type RecoveryKind = "fix" | "prerequisite";
 export interface RecoverRequest { task_id: string }
-export interface RecoverResponse { task_id: string; kind: RecoveryKind }  // the new draft task
+/** Gemini: the new draft ({ task_id, kind }). claude-code: { requested: true }, the orchestrator drafts it. */
+export interface RecoverResponse { task_id?: string; kind?: RecoveryKind; requested?: boolean }
 
 export interface HealthResponse { ok: boolean }

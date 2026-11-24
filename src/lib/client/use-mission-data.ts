@@ -320,10 +320,12 @@ export function useMissionData() {
         method: "POST", body: { task_id: taskId }, signal: operation.controller.signal,
       });
       if (!operationCurrent(operation)) throw cancelled();
-      patch(operation.session, current => ({
+      // claude-code: the orchestrator drafts it later; stay on the failed task.
+      if (response.requested) patch(operation.session, { announcement: "Recovery requested from the orchestrator." });
+      else patch(operation.session, current => ({
         missionId: task.mission_id,
         pendingMissionId: current.data.missions.some(item => item.id === task.mission_id) ? null : task.mission_id,
-        selectedTaskId: response.task_id, queueTab: "drafts",
+        selectedTaskId: response.task_id ?? null, queueTab: "drafts",
         announcement: "A recovery draft was saved. Review it before approving.",
       }));
       return response;
