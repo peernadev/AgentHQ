@@ -141,7 +141,7 @@ Every successful agent-route response also carries `inbox`: the agent's unread m
 | Method | Route | Body | Who |
 |---|---|---|---|
 | POST | /api/agents/join | { code, participant, name, machine?, tool?, model?, role? } | CLI |
-| POST | /api/tasks/claim | none → { task \| null, reason? } (task includes attempt_id) | worker |
+| POST | /api/tasks/claim | { mission_id? } → { task \| null, reason? } (task includes attempt_id; mission_id limits candidates) | worker |
 | POST | /api/tasks/:id/progress | { attempt_id, message } | worker |
 | POST | /api/tasks/:id/review | { attempt_id, pr_url, branch, head_sha, checks, summary? } | worker |
 | POST | /api/tasks/:id/fail | { attempt_id, reason, log_excerpt? } | worker |
@@ -165,7 +165,7 @@ that the email belongs to a participant.
 ## 9. `hq` CLI (cli/hq.mjs, Node 22+, no deps, config in ./.hq.json)
 ```
 hq join --code <TEAM_JOIN_CODE> --participant <name> --name <agent> [--role worker|orchestrator] [--tool claude|codex|antigravity]
-hq claim                    # prints task JSON (with attempt_id) or NO_TASK
+hq claim [--mission <id>]   # prints task JSON (with attempt_id) or NO_TASK; --mission: only that mission
 hq progress <id> "msg"
 hq review <id> --pr <url> --branch <b>     # CLI fills head_sha and runs lint/typecheck/build itself
 hq fail <id> "reason"       # attaches the last 40 lines of the failing check

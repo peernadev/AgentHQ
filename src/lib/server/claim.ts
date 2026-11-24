@@ -15,7 +15,7 @@ const ms = (t: unknown) => (t instanceof Timestamp ? t.toMillis() : 0);
  * claims the best task. Every claim reads and writes meta/scopeRegistry, so claims are
  * serialized. Queries filter on status only (no composite index); sorting is done here.
  */
-export async function claimNextTask(agentId: string): Promise<ClaimResponse> {
+export async function claimNextTask(agentId: string, missionId: string | null = null): Promise<ClaimResponse> {
   return getDb().runTransaction(async (tx) => {
     // ---- reads (Firestore requires all reads before any write) ----
     const [registry, agentsSnap, participantsSnap, queuedSnap, activeSnap] = await Promise.all([
@@ -106,7 +106,9 @@ export async function claimNextTask(agentId: string): Promise<ClaimResponse> {
 
     // ---- 3. pick: lowest priority first, deps done, no scope overlap with any lock ----
     const lockScopes = Object.values(locks);
+    // --mission: only that mission's tasks are candidates (expired leases elsewhere are still released above).
     const pick = candidates
+      .filter((t) => !missionId || t.get("mission_id") === missionId)
       .sort((a, b) => (a.get("priority") ?? 100) - (b.get("priority") ?? 100)
         || ms(a.get("created_at")) - ms(b.get("created_at")))
       .find((t) =>

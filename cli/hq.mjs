@@ -18,7 +18,8 @@ const CHECKS = [
 const USAGE = `Usage: hq <command>
   join --code <TEAM_JOIN_CODE> --participant <name> --name <agent>
        [--role worker|orchestrator] [--tool claude|codex|antigravity|other] [--model <m>] [--machine <m>]
-  claim [--json]               prints task JSON (attempt_id saved) or NO_TASK
+  claim [--mission <id>] [--json]
+                               prints task JSON (attempt_id saved) or NO_TASK; --mission: only that mission's tasks
   progress <id> "msg"
   review <id> --pr <url> --branch <b> [--summary "..."] [--allow-failing]
                                runs lint/typecheck/build, fills head_sha from git
@@ -182,9 +183,9 @@ const commands = {
   },
 
   async claim(argv) {
-    const { values: v } = parseArgs({ args: argv, options: { json: { type: "boolean" } } });
+    const { values: v } = parseArgs({ args: argv, options: { json: { type: "boolean" }, mission: { type: "string" } } });
     const cfg = loadConfig();
-    const res = await api(cfg, "POST", "/api/tasks/claim");
+    const res = await api(cfg, "POST", "/api/tasks/claim", v.mission ? { mission_id: v.mission } : undefined);
     if (!res.task) {
       saveConfig({ ...cfg, current: null });
       if (v.json) return console.log(JSON.stringify(res, null, 2));
